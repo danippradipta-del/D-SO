@@ -1,0 +1,5 @@
+{
+  "name": "D-SO KC Jember",
+  "description": "A modern, minimalist queue management application for BPJS Kesehatan KC Jember, featuring ticket issuance and a dynamic admin panel for counter management.",
+  "requestFramePermissions": []
+}
