@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { QueueStatus, QueueItem, Loket, AppState, User } from './types';
-import Header from './components/Header';
-import QueueButton from './components/QueueButton';
-import LoketSection from './components/LoketSection';
-import WaitingPanel from './components/WaitingPanel';
-import AdminPanel from './components/AdminPanel';
-import TicketModal from './components/TicketModal';
+import { QueueStatus, QueueItem, Loket, AppState, User } from './types.ts';
+import Header from './components/Header.tsx';
+import QueueButton from './components/QueueButton.tsx';
+import LoketSection from './components/LoketSection.tsx';
+import WaitingPanel from './components/WaitingPanel.tsx';
+import AdminPanel from './components/AdminPanel.tsx';
+import TicketModal from './components/TicketModal.tsx';
 
 const STORAGE_KEY = 'bpjs_queue_state_v5';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1vC1_9oX_E9W0iW0_X_X_X_X/edit'; // Placeholder
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1vC1_9oX_E9W0iW0_X_X_X_X/edit';
 
 const DEFAULT_LOKETS: Loket[] = [
   { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
@@ -58,30 +58,8 @@ const getTimeString = (timestamp: number) => {
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
     const today = new Date().toDateString();
-    
-    if (saved) {
-      const parsed: AppState = JSON.parse(saved);
-      if (parsed.lastDate === today) {
-        return { 
-          ...parsed, 
-          gasUrl: parsed.gasUrl || DEFAULT_GAS_URL,
-          spreadsheetUrl: parsed.spreadsheetUrl || DEFAULT_SHEET_URL
-        };
-      }
-      return {
-        ...parsed,
-        queues: [],
-        lokets: parsed.lokets.map(l => ({ ...l, currentQueueId: undefined })),
-        nextNumber: 1,
-        lastDate: today,
-        gasUrl: parsed.gasUrl || DEFAULT_GAS_URL,
-        spreadsheetUrl: parsed.spreadsheetUrl || DEFAULT_SHEET_URL
-      };
-    }
-    
-    return {
+    const defaultState: AppState = {
       queues: [],
       lokets: DEFAULT_LOKETS,
       users: DEFAULT_USERS,
@@ -91,13 +69,37 @@ const App: React.FC = () => {
       gasUrl: DEFAULT_GAS_URL,
       spreadsheetUrl: DEFAULT_SHEET_URL
     };
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed: AppState = JSON.parse(saved);
+        if (parsed.lastDate === today) {
+          return { 
+            ...defaultState,
+            ...parsed,
+            lokets: parsed.lokets || DEFAULT_LOKETS,
+            users: parsed.users || DEFAULT_USERS,
+            queues: parsed.queues || []
+          };
+        }
+      }
+    } catch (error) {
+      console.warn("Storage loading error, using defaults:", error);
+    }
+    
+    return defaultState;
   });
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn("Could not save state", e);
+    }
   }, [state]);
 
   const syncToSheets = async (payload: any) => {

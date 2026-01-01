@@ -14,18 +14,32 @@
             padding: 0;
             background-color: #f8fafc;
         }
+        #root:empty::before {
+            content: "Memuat Aplikasi...";
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #64748b;
+            font-weight: 600;
+        }
     </style>
-<script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?bundle",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 </head>
 <body>
     <div id="root"></div>
+    <script type="module">
+        import './index.tsx';
+    </script>
 </body>
 </html>

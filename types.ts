@@ -1,9 +1,11 @@
 
-export enum QueueStatus {
-  WAITING = 'WAITING',
-  CALLING = 'CALLING',
-  COMPLETED = 'COMPLETED'
-}
+export const QueueStatus = {
+  WAITING: 'WAITING',
+  CALLING: 'CALLING',
+  COMPLETED: 'COMPLETED'
+} as const;
+
+export type QueueStatus = typeof QueueStatus[keyof typeof QueueStatus];
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN';
 
@@ -44,6 +46,6 @@ export interface AppState {
   serviceTypes: string[];
   nextNumber: number;
   lastDate: string;
-  gasUrl?: string; // Endpoint Google Apps Script
-  spreadsheetUrl?: string; // Link to the Google Spreadsheet
+  gasUrl?: string;
+  spreadsheetUrl?: string;
 }
