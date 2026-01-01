@@ -8,9 +8,9 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_queue_state_v5';
+const STORAGE_KEY = 'bpjs_queue_state_v6';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
+const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
 const DEFAULT_LOKETS: Loket[] = [
   { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
@@ -67,7 +67,7 @@ const App: React.FC = () => {
       nextNumber: 1,
       lastDate: today,
       gasUrl: DEFAULT_GAS_URL,
-      spreadsheetUrl: DEFAULT_SHEET_URL
+      spreadsheetUrl: TARGET_SHEET_URL
     };
 
     try {
@@ -75,23 +75,17 @@ const App: React.FC = () => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.lastDate === today) {
-          // Jika URL lama masih format placeholder, ganti ke yang baru
-          const updatedSpreadsheetUrl = (parsed.spreadsheetUrl && parsed.spreadsheetUrl.includes('X_X_X_X')) 
-            ? DEFAULT_SHEET_URL 
-            : (parsed.spreadsheetUrl || DEFAULT_SHEET_URL);
-
           return { 
             ...defaultState,
             ...parsed,
-            spreadsheetUrl: updatedSpreadsheetUrl,
+            spreadsheetUrl: TARGET_SHEET_URL, // Selalu gunakan link yang baru
             lokets: parsed.lokets || DEFAULT_LOKETS,
-            users: parsed.users || DEFAULT_USERS,
-            queues: parsed.queues || []
+            users: parsed.users || DEFAULT_USERS
           };
         }
       }
     } catch (error) {
-      console.warn("Gagal memuat state dari storage:", error);
+      console.warn("Gagal memuat state:", error);
     }
     
     return defaultState;
@@ -114,19 +108,16 @@ const App: React.FC = () => {
       await fetch(state.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
-        cache: 'no-cache',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
     } catch (e) {
-      console.error("[GAS Error]:", e);
+      console.error("[Sync Error]:", e);
     }
   };
 
   const handleTakeQueue = useCallback(() => {
     const timestamp = Date.now();
-    const todayStr = getTodayDateString();
-    const timeTaken = getTimeString(timestamp);
     const newTicket: QueueItem = {
       id: `q-${timestamp}`,
       number: state.nextNumber,
@@ -145,8 +136,8 @@ const App: React.FC = () => {
     syncToSheets({
       action: 'ADD',
       number: `A-${newTicket.number.toString().padStart(3, '0')}`,
-      date: todayStr,
-      timeTaken: timeTaken
+      date: getTodayDateString(),
+      timeTaken: getTimeString(timestamp)
     });
   }, [state.nextNumber, state.gasUrl]);
 
@@ -155,10 +146,8 @@ const App: React.FC = () => {
     if (!nextInLine) return;
 
     const startTime = Date.now();
-    const timeCalled = getTimeString(startTime);
     const loketName = state.lokets.find(l => l.id === loketId)?.name || loketId;
     const user = state.users.find(u => u.npp === npp);
-    const userName = user ? user.name : npp;
 
     setState(prev => {
       const updatedQueues = prev.queues.map(q => {
@@ -174,9 +163,9 @@ const App: React.FC = () => {
       status: 'CALLING',
       number: `A-${nextInLine.number.toString().padStart(3, '0')}`,
       date: getTodayDateString(),
-      timeCalled: timeCalled,
+      timeCalled: getTimeString(startTime),
       loket: loketName,
-      handledBy: userName 
+      handledBy: user?.name || npp 
     });
   }, [state.queues, state.lokets, state.users, state.gasUrl]);
 
@@ -187,11 +176,8 @@ const App: React.FC = () => {
     const queueItem = state.queues.find(q => q.id === currentLoket.currentQueueId);
     if (!queueItem) return;
 
-    const user = state.users.find(u => u.npp === queueItem.handledByNpp);
-    const userName = user ? user.name : (queueItem.handledByNpp || '');
-
     const endTime = Date.now();
-    const timeCompleted = getTimeString(endTime);
+    const user = state.users.find(u => u.npp === queueItem.handledByNpp);
 
     setState(prev => {
       const updatedQueues = prev.queues.map(q => q.id === currentLoket.currentQueueId ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType } : q);
@@ -204,9 +190,9 @@ const App: React.FC = () => {
       status: 'COMPLETED',
       number: `A-${queueItem.number.toString().padStart(3, '0')}`,
       date: getTodayDateString(),
-      timeCompleted: timeCompleted,
+      timeCompleted: getTimeString(endTime),
       serviceType: serviceType,
-      handledBy: userName
+      handledBy: user?.name || (queueItem.handledByNpp || '')
     });
   }, [state.lokets, state.queues, state.users, state.gasUrl]);
 
@@ -235,7 +221,11 @@ const App: React.FC = () => {
           gasUrl={state.gasUrl}
           spreadsheetUrl={state.spreadsheetUrl}
           onClose={() => setIsAdminOpen(false)}
-          onReset={() => setState(prev => ({...prev, queues: [], lokets: prev.lokets.map(l => ({...l, currentQueueId: undefined})), nextNumber: 1}))}
+          onReset={() => {
+            if(confirm('Reset semua antrean hari ini?')) {
+              setState(prev => ({...prev, queues: [], lokets: prev.lokets.map(l => ({...l, currentQueueId: undefined})), nextNumber: 1}));
+            }
+          }}
           onCallNext={handleCallNext}
           onComplete={handleCompleteQueue}
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
