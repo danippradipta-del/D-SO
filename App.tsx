@@ -73,8 +73,8 @@ const App: React.FC = () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed: AppState = JSON.parse(saved);
-        if (parsed.lastDate === today) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.lastDate === today) {
           return { 
             ...defaultState,
             ...parsed,
@@ -85,7 +85,7 @@ const App: React.FC = () => {
         }
       }
     } catch (error) {
-      console.warn("Storage loading error, using defaults:", error);
+      console.warn("Gagal memuat state dari storage:", error);
     }
     
     return defaultState;
@@ -98,7 +98,7 @@ const App: React.FC = () => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
-      console.warn("Could not save state", e);
+      console.warn("Gagal menyimpan state:", e);
     }
   }, [state]);
 
