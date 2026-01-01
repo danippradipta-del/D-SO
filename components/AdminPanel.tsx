@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Loket, QueueItem, QueueStatus, User, UserRole } from '../types';
+import { Loket, QueueItem, QueueStatus, User, UserRole } from '../types.ts';
 
 interface AdminPanelProps {
   lokets: Loket[];
@@ -212,7 +212,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
         <div className="max-w-7xl mx-auto">
           {activeTab === 'service' && (
             <div className="space-y-8">
-              {/* Summary Indicator for All Admins */}
               <div className="bg-blue-600 rounded-[2rem] p-6 text-white flex items-center justify-between shadow-xl shadow-blue-200">
                 <div className="flex items-center space-x-4">
                   <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Loket, QueueItem, QueueStatus } from '../types';
+import { Loket, QueueItem, QueueStatus } from '../types.ts';
 
 interface LoketSectionProps {
   lokets: Loket[];

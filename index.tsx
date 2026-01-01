@@ -12,5 +12,5 @@ if (container) {
     </React.StrictMode>
   );
 } else {
-  console.error("Elemen root tidak ditemukan di DOM.");
+  console.error("Gagal memuat aplikasi: Elemen #root tidak ditemukan.");
 }
