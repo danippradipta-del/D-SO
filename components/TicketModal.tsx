@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { QueueItem } from '../types';
+import { QueueItem } from '../types.ts';
 
 interface TicketModalProps {
   ticket: QueueItem;
@@ -25,7 +25,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in duration-300">
+      <div className="bg-white w-full max-sm rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in duration-300">
         <div className="bg-gradient-to-br from-blue-600 to-purple-700 p-8 text-center text-white">
            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">

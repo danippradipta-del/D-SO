@@ -10,7 +10,7 @@ import TicketModal from './components/TicketModal.tsx';
 
 const STORAGE_KEY = 'bpjs_queue_state_v5';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1vC1_9oX_E9W0iW0_X_X_X_X/edit';
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
 const DEFAULT_LOKETS: Loket[] = [
   { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
@@ -75,9 +75,15 @@ const App: React.FC = () => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.lastDate === today) {
+          // Jika URL lama masih format placeholder, ganti ke yang baru
+          const updatedSpreadsheetUrl = (parsed.spreadsheetUrl && parsed.spreadsheetUrl.includes('X_X_X_X')) 
+            ? DEFAULT_SHEET_URL 
+            : (parsed.spreadsheetUrl || DEFAULT_SHEET_URL);
+
           return { 
             ...defaultState,
             ...parsed,
+            spreadsheetUrl: updatedSpreadsheetUrl,
             lokets: parsed.lokets || DEFAULT_LOKETS,
             users: parsed.users || DEFAULT_USERS,
             queues: parsed.queues || []
