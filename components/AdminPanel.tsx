@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loket, QueueItem, QueueStatus, User, UserRole } from '../types.ts';
 
 interface AdminPanelProps {
@@ -78,7 +78,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
 
   const handleAssignPetugas = (loketId: string, userNpp: string) => {
     const updatedUsers = users.map(u => {
+      // Petugas yang baru dipilih ditugaskan ke loket ini
       if (u.npp === userNpp) return { ...u, assignedLoketId: loketId };
+      // Petugas lain yang sebelumnya di loket ini menjadi standby
       if (loketId !== "" && u.assignedLoketId === loketId && u.npp !== userNpp) return { ...u, assignedLoketId: undefined };
       return u;
     });
@@ -109,7 +111,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   if (!currentUser) {
     return (
       <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl text-center">
+        <div className="bg-white w-full max-md rounded-3xl p-8 shadow-2xl text-center">
           <div className="mb-6 flex justify-center">
             <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black italic">SO</div>
           </div>
@@ -178,7 +180,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                {isSuper ? (
                                  <div className="mt-4 space-y-3">
                                    <div>
-                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Ganti Nama FL</label>
+                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Pilih Nama FL</label>
                                      <select 
                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all"
                                        value={assignedUser?.npp || ''}
@@ -192,7 +194,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                    </div>
                                    {assignedUser && (
                                      <div>
-                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipe Layanan (Role)</label>
+                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipe Layanan Petugas</label>
                                        <select 
                                          className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all"
                                          value={assignedUser.role}
@@ -200,6 +202,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                        >
                                          <option value="ADMIN">REGULER (ADMIN)</option>
                                          <option value="ASISTEN_ADMIN">MJKN (ASISTEN)</option>
+                                         <option value="SUPER_ADMIN">SUPER ADMIN</option>
                                        </select>
                                      </div>
                                    )}

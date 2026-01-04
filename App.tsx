@@ -8,7 +8,8 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_v13';
+// Menggunakan key yang lebih spesifik untuk mencegah konflik
+const STORAGE_KEY = 'bpjs_jember_so_permanent_v1';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -63,47 +64,49 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
 
-    return {
+    // Data Master (Users, Lokets, ServiceTypes) harus selalu dari storage atau default, tidak reset per hari
+    const masterData = {
       users: parsed?.users || DEFAULT_USERS,
-      lokets: parsed?.lokets || DEFAULT_LOKETS,
+      lokets: (parsed?.lokets || DEFAULT_LOKETS).map((l: Loket) => ({
+        ...l,
+        currentQueueId: parsed?.lastDate === today ? l.currentQueueId : undefined // Reset status pemanggilan loket jika hari baru
+      })),
       serviceTypes: parsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
       gasUrl: parsed?.gasUrl || DEFAULT_GAS_URL,
       spreadsheetUrl: parsed?.spreadsheetUrl || TARGET_SHEET_URL,
+    };
+
+    // Data Transaksi (Queues, Numbers) reset HANYA jika tanggal berganti
+    const transactionData = {
       queues: parsed?.lastDate === today ? (parsed?.queues || []) : [],
       assistantRecords: parsed?.lastDate === today ? (parsed?.assistantRecords || []) : [],
       nextNumber: parsed?.lastDate === today ? (parsed?.nextNumber || 1) : 1,
       nextMjknNumber: parsed?.lastDate === today ? (parsed?.nextMjknNumber || 1) : 1,
       lastDate: today,
     };
+
+    return { ...masterData, ...transactionData };
   });
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
+  // Efek untuk menyimpan setiap kali ada perubahan state
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   const syncToSheets = async (payload: any) => {
-    if (!state.gasUrl) {
-      console.warn('Sync aborted: No GAS URL configured');
-      return;
-    }
-    
+    if (!state.gasUrl) return;
     setSyncStatus('syncing');
-    console.log('Syncing to Cloud:', payload);
-
     try {
       await fetch(state.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
-      
       setSyncStatus('idle');
     } catch (e) {
       console.error('Cloud Sync Error:', e);
@@ -114,34 +117,38 @@ const App: React.FC = () => {
   const handleTakeQueue = useCallback((type: 'REGULAR' | 'MJKN') => {
     const timestamp = Date.now();
     const isMjkn = type === 'MJKN';
-    const number = isMjkn ? state.nextMjknNumber : state.nextNumber;
-    const prefix = isMjkn ? 'MJKN' : 'A';
     const dateStr = new Date().toISOString().split('T')[0];
     
-    const newTicket: QueueItem = {
-      id: `q-${timestamp}`,
-      number: number,
-      prefix: prefix,
-      status: QueueStatus.WAITING,
-      timestamp: timestamp
-    };
+    setState(prev => {
+      const number = isMjkn ? prev.nextMjknNumber : prev.nextNumber;
+      const prefix = isMjkn ? 'MJKN' : 'A';
+      
+      const newTicket: QueueItem = {
+        id: `q-${timestamp}`,
+        number: number,
+        prefix: prefix,
+        status: QueueStatus.WAITING,
+        timestamp: timestamp
+      };
 
-    setState(prev => ({
-      ...prev,
-      queues: [...prev.queues, newTicket],
-      nextNumber: isMjkn ? prev.nextNumber : prev.nextNumber + 1,
-      nextMjknNumber: isMjkn ? prev.nextMjknNumber + 1 : prev.nextMjknNumber
-    }));
-    setLastGeneratedTicket(newTicket);
+      setLastGeneratedTicket(newTicket);
 
-    syncToSheets({
-      action: 'ADD',
-      "Nomor Antrean": `${prefix}-${number.toString().padStart(3, '0')}`,
-      "Status Pengerjaan": "WAITING",
-      "Tanggal": dateStr,
-      "Waktu Ambil": getTimeString(timestamp)
+      syncToSheets({
+        action: 'ADD',
+        "Nomor Antrean": `${prefix}-${number.toString().padStart(3, '0')}`,
+        "Status Pengerjaan": "WAITING",
+        "Tanggal": dateStr,
+        "Waktu Ambil": getTimeString(timestamp)
+      });
+
+      return {
+        ...prev,
+        queues: [...prev.queues, newTicket],
+        nextNumber: isMjkn ? prev.nextNumber : prev.nextNumber + 1,
+        nextMjknNumber: isMjkn ? prev.nextMjknNumber + 1 : prev.nextMjknNumber
+      };
     });
-  }, [state.nextNumber, state.nextMjknNumber, state.gasUrl]);
+  }, [state.gasUrl]);
 
   const handleCallNext = useCallback((loketId: string, npp: string) => {
     const user = state.users.find(u => u.npp === npp);
@@ -160,16 +167,17 @@ const App: React.FC = () => {
     setState(prev => {
       const updatedQueues = prev.queues.map(q => q.id === nextInLine.id ? { ...q, status: QueueStatus.CALLING, loketId, handledByNpp: npp, startTime } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: nextInLine.id } : l);
-      return { ...prev, queues: updatedQueues, lokets: updatedLokets };
-    });
+      
+      syncToSheets({
+        action: 'UPDATE',
+        "Nomor Antrean": `${nextInLine.prefix}-${nextInLine.number.toString().padStart(3, '0')}`,
+        "Status Pengerjaan": "CALLING",
+        "Waktu Panggil": getTimeString(startTime),
+        "Loket": loketName,
+        "Nama FL (Petugas)": user?.name || npp
+      });
 
-    syncToSheets({
-      action: 'UPDATE',
-      "Nomor Antrean": `${nextInLine.prefix}-${nextInLine.number.toString().padStart(3, '0')}`,
-      "Status Pengerjaan": "CALLING",
-      "Waktu Panggil": getTimeString(startTime),
-      "Loket": loketName,
-      "Nama FL (Petugas)": user?.name || npp
+      return { ...prev, queues: updatedQueues, lokets: updatedLokets };
     });
   }, [state.queues, state.lokets, state.users, state.gasUrl]);
 
@@ -187,21 +195,22 @@ const App: React.FC = () => {
     setState(prev => {
       const updatedQueues = prev.queues.map(q => q.id === currentLoket.currentQueueId ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType, cardNumber } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: undefined } : l);
-      return { ...prev, queues: updatedQueues, lokets: updatedLokets };
-    });
+      
+      syncToSheets({
+        action: 'UPDATE',
+        "Nomor Antrean": `${queueItem.prefix}-${queueItem.number.toString().padStart(3, '0')}`,
+        "Status Pengerjaan": "COMPLETED",
+        "Waktu Selesai": getTimeString(endTime),
+        "Jenis Layanan": serviceType,
+        "Waktu Tunggu": formatDuration(waitMs),
+        "Kesesuaian Waktu Tunggu": waitMs <= 30 * 60 * 1000 ? "SESUAI" : "TIDAK SESUAI",
+        "Waktu Layanan": formatDuration(serviceMs),
+        "Kesesuaian Waktu Layanan": serviceMs <= 15 * 60 * 1000 ? "SESUAI" : "TIDAK SESUAI",
+        "Nama FL (Petugas)": user?.name || queueItem.handledByNpp || '',
+        "Noka": cardNumber || ''
+      });
 
-    syncToSheets({
-      action: 'UPDATE',
-      "Nomor Antrean": `${queueItem.prefix}-${queueItem.number.toString().padStart(3, '0')}`,
-      "Status Pengerjaan": "COMPLETED",
-      "Waktu Selesai": getTimeString(endTime),
-      "Jenis Layanan": serviceType,
-      "Waktu Tunggu": formatDuration(waitMs),
-      "Kesesuaian Waktu Tunggu": waitMs <= 30 * 60 * 1000 ? "SESUAI" : "TIDAK SESUAI",
-      "Waktu Layanan": formatDuration(serviceMs),
-      "Kesesuaian Waktu Layanan": serviceMs <= 15 * 60 * 1000 ? "SESUAI" : "TIDAK SESUAI",
-      "Nama FL (Petugas)": user?.name || queueItem.handledByNpp || '',
-      "Noka": cardNumber || ''
+      return { ...prev, queues: updatedQueues, lokets: updatedLokets };
     });
   }, [state.lokets, state.queues, state.users, state.gasUrl]);
 
@@ -219,7 +228,12 @@ const App: React.FC = () => {
         <Header />
         <div className="flex flex-col items-center space-y-16">
           <QueueButton onClick={handleTakeQueue} />
-          <LoketSection lokets={state.lokets} queues={state.queues} users={state.users} />
+          <LoketSection 
+            lokets={state.lokets} 
+            queues={state.queues} 
+            users={state.users} 
+            nextQueue={state.queues.filter(q => q.status === QueueStatus.WAITING).sort((a,b) => a.number - b.number)[0]}
+          />
           <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING).length} />
           <button onClick={() => setIsAdminOpen(true)} className="flex items-center space-x-2 text-slate-400 hover:text-blue-600 transition-colors bg-white px-6 py-2 rounded-full shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
