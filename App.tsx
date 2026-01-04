@@ -8,8 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-// Menggunakan versi storage yang sama agar data tidak hilang
-const STORAGE_KEY = 'bpjs_queue_state_v10';
+const STORAGE_KEY = 'bpjs_jember_v12';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -64,17 +63,16 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
 
-    // Logika penggabungan data: Prioritaskan data yang ada di storage
-    // Gunakan pengecekan null/undefined secara eksplisit agar array kosong tetap tersimpan
     return {
-      users: parsed?.users !== undefined ? parsed.users : DEFAULT_USERS,
-      lokets: parsed?.lokets !== undefined ? parsed.lokets : DEFAULT_LOKETS,
-      serviceTypes: parsed?.serviceTypes !== undefined ? parsed.serviceTypes : DEFAULT_SERVICE_TYPES,
-      gasUrl: parsed?.gasUrl !== undefined ? parsed.gasUrl : DEFAULT_GAS_URL,
-      spreadsheetUrl: parsed?.spreadsheetUrl !== undefined ? parsed.spreadsheetUrl : TARGET_SHEET_URL,
+      users: parsed?.users || DEFAULT_USERS,
+      lokets: parsed?.lokets || DEFAULT_LOKETS,
+      serviceTypes: parsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
+      gasUrl: parsed?.gasUrl || DEFAULT_GAS_URL,
+      spreadsheetUrl: parsed?.spreadsheetUrl || TARGET_SHEET_URL,
       queues: parsed?.lastDate === today ? (parsed?.queues || []) : [],
       assistantRecords: parsed?.lastDate === today ? (parsed?.assistantRecords || []) : [],
       nextNumber: parsed?.lastDate === today ? (parsed?.nextNumber || 1) : 1,
+      nextMjknNumber: parsed?.lastDate === today ? (parsed?.nextMjknNumber || 1) : 1,
       lastDate: today,
     };
   });
@@ -83,7 +81,6 @@ const App: React.FC = () => {
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
-  // Setiap kali state berubah, simpan ke localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
@@ -104,12 +101,16 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTakeQueue = useCallback(() => {
+  const handleTakeQueue = useCallback((type: 'REGULAR' | 'MJKN') => {
     const timestamp = Date.now();
+    const isMjkn = type === 'MJKN';
+    const number = isMjkn ? state.nextMjknNumber : state.nextNumber;
+    const prefix = isMjkn ? 'MJKN' : 'A';
+    
     const newTicket: QueueItem = {
       id: `q-${timestamp}`,
-      number: state.nextNumber,
-      prefix: 'A',
+      number: number,
+      prefix: prefix,
       status: QueueStatus.WAITING,
       timestamp: timestamp
     };
@@ -117,26 +118,34 @@ const App: React.FC = () => {
     setState(prev => ({
       ...prev,
       queues: [...prev.queues, newTicket],
-      nextNumber: prev.nextNumber + 1
+      nextNumber: isMjkn ? prev.nextNumber : prev.nextNumber + 1,
+      nextMjknNumber: isMjkn ? prev.nextMjknNumber + 1 : prev.nextMjknNumber
     }));
     setLastGeneratedTicket(newTicket);
 
     syncToSheets({
       action: 'ADD',
-      "Nomor Antrean": `A-${newTicket.number.toString().padStart(3, '0')}`,
+      "Nomor Antrean": `${prefix}-${number.toString().padStart(3, '0')}`,
       "Status Pengerjaan": "WAITING",
       "Tanggal": new Date().toLocaleDateString('id-ID'),
       "Waktu Ambil": getTimeString(timestamp)
     });
-  }, [state.nextNumber, state.gasUrl]);
+  }, [state.nextNumber, state.nextMjknNumber, state.gasUrl]);
 
   const handleCallNext = useCallback((loketId: string, npp: string) => {
-    const nextInLine = state.queues.find(q => q.status === QueueStatus.WAITING);
+    const user = state.users.find(u => u.npp === npp);
+    const isAsisten = user?.role === 'ASISTEN_ADMIN';
+    
+    // Asisten panggil MJKN, Admin panggil REGULER (Prefix A)
+    const targetPrefix = isAsisten ? 'MJKN' : 'A';
+    const nextInLine = state.queues
+      .filter(q => q.status === QueueStatus.WAITING && q.prefix === targetPrefix)
+      .sort((a, b) => a.number - b.number)[0];
+
     if (!nextInLine) return;
 
     const startTime = Date.now();
     const loketName = state.lokets.find(l => l.id === loketId)?.name || loketId;
-    const user = state.users.find(u => u.npp === npp);
 
     setState(prev => {
       const updatedQueues = prev.queues.map(q => q.id === nextInLine.id ? { ...q, status: QueueStatus.CALLING, loketId, handledByNpp: npp, startTime } : q);
@@ -146,7 +155,7 @@ const App: React.FC = () => {
 
     syncToSheets({
       action: 'UPDATE',
-      "Nomor Antrean": `A-${nextInLine.number.toString().padStart(3, '0')}`,
+      "Nomor Antrean": `${nextInLine.prefix}-${nextInLine.number.toString().padStart(3, '0')}`,
       "Status Pengerjaan": "CALLING",
       "Waktu Panggil": getTimeString(startTime),
       "Loket": loketName,
@@ -154,7 +163,7 @@ const App: React.FC = () => {
     });
   }, [state.queues, state.lokets, state.users, state.gasUrl]);
 
-  const handleCompleteQueue = useCallback((loketId: string, serviceType: string) => {
+  const handleCompleteQueue = useCallback((loketId: string, serviceType: string, cardNumber?: string) => {
     const currentLoket = state.lokets.find(l => l.id === loketId);
     if (!currentLoket?.currentQueueId) return;
     const queueItem = state.queues.find(q => q.id === currentLoket.currentQueueId);
@@ -166,14 +175,14 @@ const App: React.FC = () => {
     const serviceMs = (endTime - (queueItem.startTime || endTime));
 
     setState(prev => {
-      const updatedQueues = prev.queues.map(q => q.id === currentLoket.currentQueueId ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType } : q);
+      const updatedQueues = prev.queues.map(q => q.id === currentLoket.currentQueueId ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType, cardNumber } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: undefined } : l);
       return { ...prev, queues: updatedQueues, lokets: updatedLokets };
     });
 
     syncToSheets({
       action: 'UPDATE',
-      "Nomor Antrean": `A-${queueItem.number.toString().padStart(3, '0')}`,
+      "Nomor Antrean": `${queueItem.prefix}-${queueItem.number.toString().padStart(3, '0')}`,
       "Status Pengerjaan": "COMPLETED",
       "Waktu Selesai": getTimeString(endTime),
       "Jenis Layanan": serviceType,
@@ -181,52 +190,24 @@ const App: React.FC = () => {
       "Kesesuaian Waktu Tunggu": waitMs <= 30 * 60 * 1000 ? "SESUAI" : "TIDAK SESUAI",
       "Waktu Layanan": formatDuration(serviceMs),
       "Kesesuaian Waktu Layanan": serviceMs <= 15 * 60 * 1000 ? "SESUAI" : "TIDAK SESUAI",
-      "Nama FL (Petugas)": user?.name || queueItem.handledByNpp || ''
+      "Nama FL (Petugas)": user?.name || queueItem.handledByNpp || '',
+      "Noka": cardNumber || ''
     });
   }, [state.lokets, state.queues, state.users, state.gasUrl]);
-
-  const handleAssistantRecord = useCallback((npp: string, loketId: string, serviceType: string, cardNumber: string) => {
-    const timestamp = Date.now();
-    const user = state.users.find(u => u.npp === npp);
-    const loket = state.lokets.find(l => l.id === loketId);
-
-    setState(prev => ({
-      ...prev,
-      assistantRecords: [{ id: `ar-${timestamp}`, timestamp, npp, loketId, serviceType, cardNumber }, ...prev.assistantRecords]
-    }));
-
-    syncToSheets({
-      action: 'ADD_COMPLETE',
-      "Nomor Antrean": "MANDIRI",
-      "Status Pengerjaan": "COMPLETED",
-      "Tanggal": new Date().toLocaleDateString('id-ID'),
-      "Waktu Ambil": getTimeString(timestamp),
-      "Waktu Panggil": getTimeString(timestamp),
-      "Waktu Selesai": getTimeString(timestamp),
-      "Loket": loket?.name || loketId,
-      "Jenis Layanan": serviceType,
-      "Waktu Tunggu": "00:00:00",
-      "Kesesuaian Waktu Tunggu": "SESUAI",
-      "Waktu Layanan": "00:00:00",
-      "Kesesuaian Waktu Layanan": "SESUAI",
-      "Nama FL (Petugas)": user?.name || npp,
-      "Noka": cardNumber
-    });
-  }, [state.users, state.lokets, state.gasUrl]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
       {syncStatus === 'syncing' && (
         <div className="fixed top-4 right-4 bg-white px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border border-blue-100 z-[100]">
           <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
-          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-xs">Syncing...</span>
+          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-xs">Cloud Sync...</span>
         </div>
       )}
       <div className="w-full max-w-4xl space-y-12">
         <Header />
         <div className="flex flex-col items-center space-y-16">
           <QueueButton onClick={handleTakeQueue} />
-          <LoketSection lokets={state.lokets} queues={state.queues} users={state.users} nextQueue={state.queues.find(q => q.status === QueueStatus.WAITING)} />
+          <LoketSection lokets={state.lokets} queues={state.queues} users={state.users} />
           <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING).length} />
           <button onClick={() => setIsAdminOpen(true)} className="flex items-center space-x-2 text-slate-400 hover:text-blue-600 transition-colors bg-white px-6 py-2 rounded-full shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
@@ -238,8 +219,8 @@ const App: React.FC = () => {
         <AdminPanel 
           lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
           gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { if(confirm('Reset semua antrean?')) setState(prev => ({...prev, queues: [], nextNumber: 1})); }}
-          onCallNext={handleCallNext} onComplete={handleCompleteQueue} onAssistantLog={handleAssistantRecord}
+          onReset={() => { if(confirm('Reset semua antrean?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
+          onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
           onUpdateGasUrl={(url) => setState(prev => ({...prev, gasUrl: url}))}

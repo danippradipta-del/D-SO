@@ -12,8 +12,8 @@ interface AdminPanelProps {
   onClose: () => void;
   onReset: () => void;
   onCallNext: (loketId: string, npp: string) => void;
-  onComplete: (loketId: string, serviceType: string) => void;
-  onAssistantLog: (npp: string, loketId: string, serviceType: string, cardNumber: string) => void;
+  onComplete: (loketId: string, serviceType: string, cardNumber?: string) => void;
+  onAssistantLog?: (npp: string, loketId: string, serviceType: string, cardNumber: string) => void;
   onUpdateUsers: (users: User[]) => void;
   onUpdateServiceTypes: (types: string[]) => void;
   onUpdateGasUrl: (url: string) => void;
@@ -54,23 +54,19 @@ const SLATimer: React.FC<{
   );
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceTypes, gasUrl, spreadsheetUrl, onClose, onReset, onCallNext, onComplete, onAssistantLog, onUpdateUsers, onUpdateServiceTypes, onUpdateGasUrl, onUpdateSpreadsheetUrl, onUpdateLokets }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceTypes, gasUrl, spreadsheetUrl, onClose, onReset, onCallNext, onComplete, onUpdateUsers, onUpdateServiceTypes, onUpdateGasUrl, onUpdateSpreadsheetUrl, onUpdateLokets }) => {
   const [loginNpp, setLoginNpp] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'service' | 'users' | 'lokets' | 'history' | 'settings'>('service');
   
   const [selectedServices, setSelectedServices] = useState<{ [key: string]: string }>({});
-  const [assistantCardNumbers, setAssistantCardNumbers] = useState<{ [key: string]: string }>({});
-  const [asistenServingStates, setAsistenServingStates] = useState<{ [key: string]: boolean }>({});
+  const [cardNumbers, setCardNumbers] = useState<{ [key: string]: string }>({});
   
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddLoketModalOpen, setIsAddLoketModalOpen] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({ role: 'ADMIN' });
   const [newLoket, setNewLoket] = useState<Partial<Loket>>({ color: 'blue' });
-
-  const waitingQueues = useMemo(() => queues.filter(q => q.status === QueueStatus.WAITING), [queues]);
-  const waitingCount = waitingQueues.length;
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,20 +85,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
     onUpdateUsers(updatedUsers);
   };
 
-  const handleAssistantSubmit = (loketId: string) => {
+  const handleCompleteWithData = (loketId: string) => {
     const service = selectedServices[loketId];
-    const cardNum = assistantCardNumbers[loketId];
+    const card = cardNumbers[loketId];
 
     if (!service) return alert('Pilih jenis layanan!');
-    if (!cardNum || cardNum.length !== 13 || !/^\d+$/.test(cardNum)) return alert('Nomor kartu harus 13 digit angka!');
+    if (card && (card.length !== 13 || !/^\d+$/.test(card))) return alert('Nomor kartu harus 13 digit angka!');
 
-    onAssistantLog(currentUser?.npp || '', loketId, service, cardNum);
+    onComplete(loketId, service, card);
     
-    // Reset state
-    setAssistantCardNumbers(prev => ({ ...prev, [loketId]: '' }));
-    setSelectedServices(prev => ({ ...prev, [loketId]: '' }));
-    setAsistenServingStates(prev => ({ ...prev, [loketId]: false }));
-    alert('Catatan layanan berhasil disimpan!');
+    // Clear temp state
+    const newServices = { ...selectedServices }; delete newServices[loketId]; setSelectedServices(newServices);
+    const newCards = { ...cardNumbers }; delete newCards[loketId]; setCardNumbers(newCards);
   };
 
   const isSuper = currentUser?.role === 'SUPER_ADMIN';
@@ -154,21 +148,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
         <div className="max-w-7xl mx-auto">
           {activeTab === 'service' && (
             <div className="space-y-8">
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2rem] p-6 text-white flex items-center justify-between shadow-xl">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Monitoring Antrean</p>
-                    <h3 className="text-xl font-black uppercase tracking-tighter">Status Seluruh Loket</h3>
-                  </div>
-                </div>
-                <div className="bg-white text-blue-600 px-6 py-3 rounded-2xl font-black text-3xl shadow-lg tabular-nums">
-                  {waitingCount}
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {lokets
                   .filter(l => isSuper || l.id === currentUser.assignedLoketId)
@@ -177,8 +156,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                     const isCalling = !!currentQueue;
                     const assignedUser = users.find(u => u.assignedLoketId === loket.id);
                     const isAssistant = assignedUser?.role === 'ASISTEN_ADMIN';
-                    const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : 'blue';
-                    const isServingAsisten = asistenServingStates[loket.id];
+                    const targetPrefix = isAssistant ? 'MJKN' : 'A';
+                    
+                    const waitingCount = queues.filter(q => q.status === QueueStatus.WAITING && q.prefix === targetPrefix).length;
+                    const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : loket.color === 'emerald' ? 'emerald' : 'blue';
                     
                     return (
                       <div key={loket.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[500px]">
@@ -188,119 +169,73 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                           <div className="flex justify-between items-start">
                              <div>
                                <h4 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{loket.name}</h4>
-                               <div className="mt-1">
-                                 {isSuper ? (
-                                   <div className="space-y-1">
-                                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Petugas Bertugas:</span>
-                                     <select 
-                                      className="bg-slate-50 border-0 text-[11px] font-black text-blue-600 uppercase focus:ring-0 cursor-pointer p-0"
-                                      value={assignedUser?.npp || ''}
-                                      onChange={(e) => handleAssignPetugas(loket.id, e.target.value)}
-                                     >
-                                       <option value="">-- Kosong --</option>
-                                       {users.map(u => (
-                                         <option key={u.npp} value={u.npp}>{u.name} ({u.role.replace('_ADMIN', '')})</option>
-                                       ))}
-                                     </select>
-                                   </div>
-                                 ) : (
-                                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-                                     {assignedUser ? assignedUser.name : 'BELUM ADA PETUGAS'}
-                                   </p>
-                                 )}
-                               </div>
+                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">
+                                 {assignedUser ? assignedUser.name : 'BELUM ADA PETUGAS'}
+                               </p>
                              </div>
                              <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                               {isAssistant ? 'ASISTEN' : isCalling ? 'MELAYANI' : 'SIAP'}
+                               {isAssistant ? 'MJKN' : 'REGULER'}
                              </span>
                           </div>
 
-                          {isAssistant ? (
-                            <div className="space-y-6">
-                               {!isServingAsisten ? (
-                                  <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
-                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                     </svg>
-                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Belum Ada Sesi Layanan</span>
-                                  </div>
-                               ) : (
-                                  <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100 space-y-4 animate-in slide-in-from-top duration-300">
-                                    <h5 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">Layanan Mandiri Sedang Berjalan</h5>
-                                    <div>
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Nomor Kartu (13 Digit)</label>
-                                      <input 
-                                        type="text" 
-                                        maxLength={13}
-                                        placeholder="000XXXXXXXXXX"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-amber-500 mt-1"
-                                        value={assistantCardNumbers[loket.id] || ''}
-                                        onChange={e => setAssistantCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))}
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Jenis Layanan</label>
-                                      <select 
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-amber-500 mt-1"
-                                        value={selectedServices[loket.id] || ''}
-                                        onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}
-                                      >
-                                        <option value="">-- Pilih Layanan --</option>
-                                        {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                      </select>
-                                    </div>
-                                  </div>
-                               )}
-                            </div>
-                          ) : (
-                            <>
-                              <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Sedang Dilayani</span>
-                                <span className={`text-8xl font-black tabular-nums tracking-tighter ${isCalling ? `text-${accentColor}-600` : 'text-slate-200'}`}>
-                                  {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '---'}
-                                </span>
-                              </div>
-                              {isCalling && currentQueue && (
-                                <div className="space-y-2">
+                          <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Sedang Dilayani</span>
+                            <span className={`text-6xl font-black tabular-nums tracking-tighter ${isCalling ? `text-${accentColor}-600` : 'text-slate-200'}`}>
+                              {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '---'}
+                            </span>
+                          </div>
+
+                          {isCalling && currentQueue && (
+                            <div className="space-y-4">
+                               <div className="space-y-2">
                                   <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Durasi Tunggu" />
                                   <SLATimer startTime={currentQueue.startTime!} type="SERVICE" label="Durasi Layanan" />
-                                </div>
-                              )}
-                            </>
+                               </div>
+                               
+                               <div className="space-y-3">
+                                  <div>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nomor Kartu (13 Digit)</label>
+                                    <input 
+                                      type="text" 
+                                      maxLength={13}
+                                      placeholder="000XXXXXXXXXX"
+                                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 mt-1"
+                                      value={cardNumbers[loket.id] || ''}
+                                      onChange={e => setCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Jenis Layanan</label>
+                                    <select 
+                                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 mt-1"
+                                      value={selectedServices[loket.id] || ''}
+                                      onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}
+                                    >
+                                      <option value="">-- Pilih Layanan --</option>
+                                      {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                  </div>
+                               </div>
+                            </div>
                           )}
                         </div>
 
-                        <div className="mt-8 space-y-3">
-                          {isAssistant ? (
-                             !isServingAsisten ? (
-                                <button 
-                                  onClick={() => setAsistenServingStates(prev => ({ ...prev, [loket.id]: true }))}
-                                  className="w-full py-6 bg-amber-600 text-white font-black rounded-2xl shadow-lg hover:bg-amber-700 transition-all uppercase text-[10px] tracking-widest"
-                                >
-                                  Mulai Layani Peserta
-                                </button>
-                             ) : (
-                                <button 
-                                  onClick={() => handleAssistantSubmit(loket.id)}
-                                  className="w-full py-5 bg-emerald-600 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-700 transition-all uppercase text-[10px] tracking-widest"
-                                >
-                                  Selesai & Simpan Data
-                                </button>
-                             )
+                        <div className="mt-8">
+                          {isCalling ? (
+                             <button 
+                               onClick={() => handleCompleteWithData(loket.id)}
+                               className={`w-full py-5 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg hover:brightness-110 uppercase text-[10px] tracking-widest`}
+                             >
+                               Selesai Melayani
+                             </button>
                           ) : (
-                             isCalling ? (
-                                <>
-                                  <select className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-500" value={selectedServices[loket.id] || ''} onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}>
-                                    <option value="">-- Pilih Jenis Layanan --</option>
-                                    {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                  <button onClick={() => { if(!selectedServices[loket.id]) return alert('Pilih jenis layanan!'); onComplete(loket.id, selectedServices[loket.id]); setSelectedServices(prev => { const n = {...prev}; delete n[loket.id]; return n; }); }} className={`w-full py-5 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg hover:brightness-110 uppercase text-[10px] tracking-widest`}>Selesai Melayani</button>
-                                </>
-                              ) : (
-                                <button disabled={waitingCount === 0 || (!isSuper && !assignedUser)} onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 uppercase text-[10px] tracking-widest hover:brightness-110`}>
-                                  {!assignedUser && !isSuper ? 'PETUGAS TIDAK AKTIF' : `PANGGIL ANTREAN (${waitingCount})`}
-                                </button>
-                              )
+                             <button 
+                               disabled={waitingCount === 0 || (!isSuper && !assignedUser)} 
+                               onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} 
+                               className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 uppercase text-[10px] tracking-widest hover:brightness-110`}
+                             >
+                               PANGGIL {targetPrefix} ({waitingCount})
+                             </button>
                           )}
                         </div>
                       </div>
@@ -363,7 +298,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                  {lokets.map(l => (
                    <div key={l.id} className="p-6 bg-slate-50 border border-slate-200 rounded-3xl flex flex-col items-center space-y-4">
-                     <div className={`w-12 h-1.5 rounded-full bg-${l.color === 'pink' ? 'pink' : l.color === 'purple' ? 'purple' : 'blue'}-600`}></div>
+                     <div className={`w-12 h-1.5 rounded-full bg-${l.color === 'pink' ? 'pink' : l.color === 'purple' ? 'purple' : l.color === 'emerald' ? 'emerald' : 'blue'}-600`}></div>
                      <span className="font-black text-slate-800 uppercase text-lg">{l.name}</span>
                      <button onClick={() => confirm('Tutup loket ini?') && onUpdateLokets(lokets.filter(item => item.id !== l.id))} className="text-red-400 font-bold text-[10px] uppercase tracking-widest hover:text-red-600 transition-colors">Tutup Loket</button>
                    </div>
@@ -397,14 +332,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
       {/* Modals */}
       {isAddUserModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl">
+          <div className="bg-white w-full max-md rounded-[2.5rem] p-10 shadow-2xl">
             <h3 className="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter">Tambah Nama FL</h3>
             <div className="space-y-4">
               <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" placeholder="Nama Lengkap" onChange={e => setNewUser({...newUser, name: e.target.value})} />
               <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" placeholder="NPP Petugas" onChange={e => setNewUser({...newUser, npp: e.target.value})} />
               <select className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}>
-                <option value="ADMIN">ADMIN (ANTREAN SO)</option>
-                <option value="ASISTEN_ADMIN">ASISTEN (LAYANAN MANDIRI)</option>
+                <option value="ADMIN">ADMIN (ANTREAN REGULER)</option>
+                <option value="ASISTEN_ADMIN">ASISTEN (ANTREAN MJKN)</option>
                 <option value="SUPER_ADMIN">SUPER ADMIN (MANAGERIAL)</option>
               </select>
               <div className="flex space-x-3 pt-6">
@@ -422,7 +357,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
 
       {isAddLoketModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl">
+          <div className="bg-white w-full max-md rounded-[2.5rem] p-10 shadow-2xl">
             <h3 className="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter">Buka Loket Baru</h3>
             <div className="space-y-4">
               <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" placeholder="Contoh: LOKET 4" onChange={e => setNewLoket({...newLoket, name: e.target.value})} />

@@ -30,6 +30,7 @@ export interface QueueItem {
   loketId?: string;
   serviceType?: string;
   handledByNpp?: string;
+  cardNumber?: string;
 }
 
 export interface AssistantRecord {
@@ -55,6 +56,7 @@ export interface AppState {
   users: User[];
   serviceTypes: string[];
   nextNumber: number;
+  nextMjknNumber: number;
   lastDate: string;
   gasUrl?: string;
   spreadsheetUrl?: string;
