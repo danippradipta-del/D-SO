@@ -85,6 +85,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
     onUpdateUsers(updatedUsers);
   };
 
+  const handleUpdateUserRole = (userId: string, newRole: UserRole) => {
+    const updatedUsers = users.map(u => u.id === userId ? { ...u, role: newRole } : u);
+    onUpdateUsers(updatedUsers);
+  };
+
   const handleCompleteWithData = (loketId: string) => {
     const service = selectedServices[loketId];
     const card = cardNumbers[loketId];
@@ -167,13 +172,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                         
                         <div className="space-y-6">
                           <div className="flex justify-between items-start">
-                             <div>
+                             <div className="flex-1 mr-4">
                                <h4 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{loket.name}</h4>
-                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">
-                                 {assignedUser ? assignedUser.name : 'BELUM ADA PETUGAS'}
-                               </p>
+                               
+                               {isSuper ? (
+                                 <div className="mt-4 space-y-3">
+                                   <div>
+                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Ganti Nama FL</label>
+                                     <select 
+                                       className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all"
+                                       value={assignedUser?.npp || ''}
+                                       onChange={(e) => handleAssignPetugas(loket.id, e.target.value)}
+                                     >
+                                       <option value="">-- Tanpa Petugas --</option>
+                                       {users.map(u => (
+                                         <option key={u.id} value={u.npp}>{u.name} ({u.npp})</option>
+                                       ))}
+                                     </select>
+                                   </div>
+                                   {assignedUser && (
+                                     <div>
+                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipe Layanan (Role)</label>
+                                       <select 
+                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all"
+                                         value={assignedUser.role}
+                                         onChange={(e) => handleUpdateUserRole(assignedUser.id, e.target.value as UserRole)}
+                                       >
+                                         <option value="ADMIN">REGULER (ADMIN)</option>
+                                         <option value="ASISTEN_ADMIN">MJKN (ASISTEN)</option>
+                                       </select>
+                                     </div>
+                                   )}
+                                 </div>
+                               ) : (
+                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">
+                                   {assignedUser ? assignedUser.name : 'BELUM ADA PETUGAS'}
+                                 </p>
+                               )}
                              </div>
-                             <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                             <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
                                {isAssistant ? 'MJKN' : 'REGULER'}
                              </span>
                           </div>
