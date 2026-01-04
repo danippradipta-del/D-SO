@@ -62,6 +62,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   
   const [selectedServices, setSelectedServices] = useState<{ [key: string]: string }>({});
   const [assistantCardNumbers, setAssistantCardNumbers] = useState<{ [key: string]: string }>({});
+  const [asistenServingStates, setAsistenServingStates] = useState<{ [key: string]: boolean }>({});
+  
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddLoketModalOpen, setIsAddLoketModalOpen] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({ role: 'ADMIN' });
@@ -80,9 +82,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
 
   const handleAssignPetugas = (loketId: string, userNpp: string) => {
     const updatedUsers = users.map(u => {
-      // Jika user yang dipilih, berikan loketId baru
       if (u.npp === userNpp) return { ...u, assignedLoketId: loketId };
-      // Jika user lain sebelumnya memegang loketId ini, unassign
       if (loketId !== "" && u.assignedLoketId === loketId && u.npp !== userNpp) return { ...u, assignedLoketId: undefined };
       return u;
     });
@@ -98,8 +98,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
 
     onAssistantLog(currentUser?.npp || '', loketId, service, cardNum);
     
+    // Reset state
     setAssistantCardNumbers(prev => ({ ...prev, [loketId]: '' }));
     setSelectedServices(prev => ({ ...prev, [loketId]: '' }));
+    setAsistenServingStates(prev => ({ ...prev, [loketId]: false }));
     alert('Catatan layanan berhasil disimpan!');
   };
 
@@ -176,6 +178,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                     const assignedUser = users.find(u => u.assignedLoketId === loket.id);
                     const isAssistant = assignedUser?.role === 'ASISTEN_ADMIN';
                     const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : 'blue';
+                    const isServingAsisten = asistenServingStates[loket.id];
                     
                     return (
                       <div key={loket.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[500px]">
@@ -213,36 +216,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                           </div>
 
                           {isAssistant ? (
-                            <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100 space-y-4">
-                              <h5 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">Layanan Mandiri</h5>
-                              <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Nomor Kartu (13 Digit)</label>
-                                <input 
-                                  type="text" 
-                                  maxLength={13}
-                                  placeholder="000XXXXXXXXXX"
-                                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-amber-500 mt-1"
-                                  value={assistantCardNumbers[loket.id] || ''}
-                                  onChange={e => setAssistantCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Jenis Layanan</label>
-                                <select 
-                                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-amber-500 mt-1"
-                                  value={selectedServices[loket.id] || ''}
-                                  onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}
-                                >
-                                  <option value="">-- Pilih Layanan --</option>
-                                  {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                              </div>
-                              <button 
-                                onClick={() => handleAssistantSubmit(loket.id)}
-                                className="w-full py-4 bg-amber-600 text-white font-black rounded-xl shadow-lg hover:bg-amber-700 transition-all uppercase text-[10px] tracking-widest"
-                              >
-                                Simpan Data
-                              </button>
+                            <div className="space-y-6">
+                               {!isServingAsisten ? (
+                                  <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
+                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                     </svg>
+                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Belum Ada Sesi Layanan</span>
+                                  </div>
+                               ) : (
+                                  <div className="bg-amber-50 rounded-3xl p-6 border border-amber-100 space-y-4 animate-in slide-in-from-top duration-300">
+                                    <h5 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">Layanan Mandiri Sedang Berjalan</h5>
+                                    <div>
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Nomor Kartu (13 Digit)</label>
+                                      <input 
+                                        type="text" 
+                                        maxLength={13}
+                                        placeholder="000XXXXXXXXXX"
+                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-amber-500 mt-1"
+                                        value={assistantCardNumbers[loket.id] || ''}
+                                        onChange={e => setAssistantCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Jenis Layanan</label>
+                                      <select 
+                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-amber-500 mt-1"
+                                        value={selectedServices[loket.id] || ''}
+                                        onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}
+                                      >
+                                        <option value="">-- Pilih Layanan --</option>
+                                        {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                      </select>
+                                    </div>
+                                  </div>
+                               )}
                             </div>
                           ) : (
                             <>
@@ -262,9 +270,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                           )}
                         </div>
 
-                        {!isAssistant && (
-                          <div className="mt-8 space-y-3">
-                             {isCalling ? (
+                        <div className="mt-8 space-y-3">
+                          {isAssistant ? (
+                             !isServingAsisten ? (
+                                <button 
+                                  onClick={() => setAsistenServingStates(prev => ({ ...prev, [loket.id]: true }))}
+                                  className="w-full py-6 bg-amber-600 text-white font-black rounded-2xl shadow-lg hover:bg-amber-700 transition-all uppercase text-[10px] tracking-widest"
+                                >
+                                  Mulai Layani Peserta
+                                </button>
+                             ) : (
+                                <button 
+                                  onClick={() => handleAssistantSubmit(loket.id)}
+                                  className="w-full py-5 bg-emerald-600 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-700 transition-all uppercase text-[10px] tracking-widest"
+                                >
+                                  Selesai & Simpan Data
+                                </button>
+                             )
+                          ) : (
+                             isCalling ? (
                                 <>
                                   <select className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 ring-blue-500" value={selectedServices[loket.id] || ''} onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}>
                                     <option value="">-- Pilih Jenis Layanan --</option>
@@ -276,9 +300,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                 <button disabled={waitingCount === 0 || (!isSuper && !assignedUser)} onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 uppercase text-[10px] tracking-widest hover:brightness-110`}>
                                   {!assignedUser && !isSuper ? 'PETUGAS TIDAK AKTIF' : `PANGGIL ANTREAN (${waitingCount})`}
                                 </button>
-                              )}
-                          </div>
-                        )}
+                              )
+                          )}
+                        </div>
                       </div>
                     );
                 })}
@@ -385,7 +409,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
               </select>
               <div className="flex space-x-3 pt-6">
                 <button onClick={() => setIsAddUserModalOpen(false)} className="flex-1 py-4 text-slate-400 font-bold text-xs uppercase">Batal</button>
-                <button onClick={() => { onUpdateUsers([...users, { ...newUser, id: Date.now().toString(), email: `${newUser.npp}@bpjs-kesehatan.go.id` } as User]); setIsAddUserModalOpen(false); }} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Simpan Petugas</button>
+                <button onClick={() => { 
+                  if(!newUser.name || !newUser.npp) return alert('Lengkapi data!');
+                  onUpdateUsers([...users, { ...newUser, id: Date.now().toString(), email: `${newUser.npp}@bpjs-kesehatan.go.id` } as User]); 
+                  setIsAddUserModalOpen(false); 
+                }} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Simpan Petugas</button>
               </div>
             </div>
           </div>
@@ -402,10 +430,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                 <option value="blue">Biru (Utama)</option>
                 <option value="pink">Pink (Prioritas)</option>
                 <option value="purple">Ungu (Khusus)</option>
+                <option value="emerald">Hijau (Tambahan)</option>
               </select>
               <div className="flex space-x-3 pt-6">
                 <button onClick={() => setIsAddLoketModalOpen(false)} className="flex-1 py-4 text-slate-400 font-bold text-xs uppercase">Batal</button>
-                <button onClick={() => { onUpdateLokets([...lokets, { ...newLoket, id: `loket-${Date.now()}` } as Loket]); setIsAddLoketModalOpen(false); }} className="flex-1 py-4 bg-purple-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-purple-200">Aktifkan Loket</button>
+                <button onClick={() => { 
+                  if(!newLoket.name) return alert('Lengkapi nama loket!');
+                  onUpdateLokets([...lokets, { ...newLoket, id: `loket-${Date.now()}` } as Loket]); 
+                  setIsAddLoketModalOpen(false); 
+                }} className="flex-1 py-4 bg-purple-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-purple-200">Aktifkan Loket</button>
               </div>
             </div>
           </div>

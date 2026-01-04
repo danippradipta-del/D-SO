@@ -8,7 +8,8 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_queue_state_v9';
+// Menggunakan versi storage yang sama agar data tidak hilang
+const STORAGE_KEY = 'bpjs_queue_state_v10';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -16,6 +17,14 @@ const DEFAULT_LOKETS: Loket[] = [
   { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
   { id: 'loket-2', name: 'LOKET 2', color: 'pink' },
   { id: 'loket-3', name: 'LOKET 3', color: 'purple' },
+];
+
+const DEFAULT_USERS: User[] = [
+  { id: 'u-super', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
+  { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
+  { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
+  { id: 'u3', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-3' },
+  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN' },
 ];
 
 const DEFAULT_SERVICE_TYPES = [
@@ -36,14 +45,6 @@ const DEFAULT_SERVICE_TYPES = [
   "Tidak bisa dilayani di SO"
 ];
 
-const DEFAULT_USERS: User[] = [
-  { id: 'u-super', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
-  { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
-  { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
-  { id: 'u3', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-3' },
-  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN' },
-];
-
 const getTimeString = (timestamp: number) => {
   const date = new Date(timestamp);
   return date.toTimeString().split(' ')[0];
@@ -60,26 +61,20 @@ const formatDuration = (ms: number) => {
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
     const today = new Date().toDateString();
-    let savedParsed: any = null;
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) savedParsed = JSON.parse(saved);
-    } catch (e) { console.warn(e); }
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const parsed = saved ? JSON.parse(saved) : null;
 
-    const configState = {
-      users: savedParsed?.users || DEFAULT_USERS,
-      lokets: savedParsed?.lokets || DEFAULT_LOKETS,
-      serviceTypes: savedParsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
-      gasUrl: savedParsed?.gasUrl || DEFAULT_GAS_URL,
-      spreadsheetUrl: savedParsed?.spreadsheetUrl || TARGET_SHEET_URL,
-    };
-
-    const isSameDay = savedParsed?.lastDate === today;
+    // Logika penggabungan data: Prioritaskan data yang ada di storage
+    // Gunakan pengecekan null/undefined secara eksplisit agar array kosong tetap tersimpan
     return {
-      ...configState,
-      queues: isSameDay ? (savedParsed?.queues || []) : [],
-      assistantRecords: isSameDay ? (savedParsed?.assistantRecords || []) : [],
-      nextNumber: isSameDay ? (savedParsed?.nextNumber || 1) : 1,
+      users: parsed?.users !== undefined ? parsed.users : DEFAULT_USERS,
+      lokets: parsed?.lokets !== undefined ? parsed.lokets : DEFAULT_LOKETS,
+      serviceTypes: parsed?.serviceTypes !== undefined ? parsed.serviceTypes : DEFAULT_SERVICE_TYPES,
+      gasUrl: parsed?.gasUrl !== undefined ? parsed.gasUrl : DEFAULT_GAS_URL,
+      spreadsheetUrl: parsed?.spreadsheetUrl !== undefined ? parsed.spreadsheetUrl : TARGET_SHEET_URL,
+      queues: parsed?.lastDate === today ? (parsed?.queues || []) : [],
+      assistantRecords: parsed?.lastDate === today ? (parsed?.assistantRecords || []) : [],
+      nextNumber: parsed?.lastDate === today ? (parsed?.nextNumber || 1) : 1,
       lastDate: today,
     };
   });
@@ -88,6 +83,7 @@ const App: React.FC = () => {
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
+  // Setiap kali state berubah, simpan ke localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
@@ -223,7 +219,7 @@ const App: React.FC = () => {
       {syncStatus === 'syncing' && (
         <div className="fixed top-4 right-4 bg-white px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border border-blue-100 z-[100]">
           <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
-          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-xs">Sinkronisasi Cloud...</span>
+          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-xs">Syncing...</span>
         </div>
       )}
       <div className="w-full max-w-4xl space-y-12">
