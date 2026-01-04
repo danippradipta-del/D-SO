@@ -71,10 +71,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const user = users.find(u => u.npp === loginNpp);
-    // Password default sederhana untuk simulasi
     if (user && loginPassword === '12345678') {
       setCurrentUser(user);
-    } else { alert('NPP atau Password salah!'); }
+    } else { 
+      alert('NPP atau Password salah!'); 
+    }
   };
 
   const handleAssignPetugas = (loketId: string, userNpp: string) => {
@@ -145,8 +146,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
             {isSuper && <button onClick={() => setActiveTab('settings')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'settings' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Integrasi</button>}
           </nav>
           <div className="h-8 w-px bg-slate-200 mx-2"></div>
-          <button onClick={() => setCurrentUser(null)} className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg></button>
-          <button onClick={onClose} className="p-3 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
+          <button onClick={() => setCurrentUser(null)} title="Logout" className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg></button>
+          <button onClick={onClose} title="Tutup Panel" className="p-3 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
       </header>
 
@@ -206,9 +207,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                    )}
                                  </div>
                                ) : (
-                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1 italic">
-                                   Petugas: {assignedUser ? assignedUser.name : 'TIDAK TERDETEKSI'}
-                                 </p>
+                                 <div className="mt-2">
+                                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide italic">
+                                     Petugas: {assignedUser ? assignedUser.name : 'TIDAK TERDETEKSI'}
+                                   </p>
+                                   {/* Admin biasa bisa ganti role sendiri ke asisten jika diperlukan */}
+                                   <button 
+                                      onClick={() => handleUpdateUserRole(currentUser.id, currentUser.role === 'ADMIN' ? 'ASISTEN_ADMIN' : 'ADMIN')}
+                                      className="mt-1 text-[9px] font-black text-blue-600 uppercase hover:underline"
+                                   >
+                                      Ubah ke {currentUser.role === 'ADMIN' ? 'MJKN' : 'REGULER'}
+                                   </button>
+                                 </div>
                                )}
                              </div>
                              <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
@@ -268,7 +278,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                              </button>
                           ) : (
                              <button 
-                               disabled={waitingCount === 0 || (!isSuper && !assignedUser)} 
+                               disabled={waitingCount === 0} 
                                onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} 
                                className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 uppercase text-[10px] tracking-widest hover:brightness-110`}
                              >

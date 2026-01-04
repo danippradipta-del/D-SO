@@ -8,8 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-// Gunakan key yang sangat spesifik dan permanen
-const STORAGE_KEY = 'bpjs_jember_so_final_v1';
+const STORAGE_KEY = 'bpjs_jember_so_final_v2'; // Versi baru untuk data yang diperbarui
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -24,13 +23,11 @@ const DEFAULT_USERS: User[] = [
   { id: 'u-super', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
   { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
   { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
-  { id: 'u3', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-3' },
-  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
-  // Tambahan Petugas Standby sesuai permintaan
-  { id: 'u4', name: 'Rina Wijaya', npp: '250201', email: '250201@bpjs-kesehatan.go.id', role: 'ADMIN' },
-  { id: 'u5', name: 'Budi Santoso', npp: '250202', email: '250202@bpjs-kesehatan.go.id', role: 'ADMIN' },
-  { id: 'u6', name: 'Siti Aminah', npp: '250203', email: '250203@bpjs-kesehatan.go.id', role: 'ADMIN' },
-  { id: 'u7', name: 'Dedi Kurniawan', npp: '250204', email: '250204@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u3', name: 'Laili', npp: '111111', email: 'laili@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-3' },
+  { id: 'u4', name: 'Pundi', npp: '22222', email: 'pundi@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
+  { id: 'u-fahri', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u-vina', name: "Vina Nihayatus Sa'adah", npp: '05315', email: 'vina.nihayatus@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u-ririt', name: 'Ririt Eka Agustania', npp: '04586', email: 'ririt.eka@bpjs-kesehatan.go.id', role: 'ADMIN' },
 ];
 
 const DEFAULT_SERVICE_TYPES = [
@@ -70,14 +67,14 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
 
-    // MASTER DATA: Harus selalu persisten (tidak boleh terhapus pergantian hari)
+    // MASTER DATA (Permanen): Jika sudah ada di storage gunakan itu, jika belum gunakan default
     const users = parsed?.users || DEFAULT_USERS;
     const lokets = parsed?.lokets || DEFAULT_LOKETS;
     const serviceTypes = parsed?.serviceTypes || DEFAULT_SERVICE_TYPES;
     const gasUrl = parsed?.gasUrl || DEFAULT_GAS_URL;
     const spreadsheetUrl = parsed?.spreadsheetUrl || TARGET_SHEET_URL;
 
-    // TRANSACTION DATA: Reset hanya jika tanggal berganti
+    // TRANSACTION DATA (Harian): Reset jika tanggal berganti
     const isSameDay = parsed?.lastDate === today;
     
     return {
@@ -101,7 +98,6 @@ const App: React.FC = () => {
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
-  // Simpan setiap perubahan ke storage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
@@ -253,7 +249,7 @@ const App: React.FC = () => {
         <AdminPanel 
           lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
           gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { if(confirm('Reset semua antrean?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
+          onReset={() => { if(confirm('Reset semua antrean hari ini?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
           onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
