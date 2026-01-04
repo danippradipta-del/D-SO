@@ -8,7 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_queue_state_v7';
+const STORAGE_KEY = 'bpjs_queue_state_v8';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -41,12 +41,12 @@ const DEFAULT_USERS: User[] = [
   { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
   { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
   { id: 'u3', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-3' },
-  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-1' },
+  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN' },
 ];
 
 const getTodayDateString = () => {
   const d = new Date();
-  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  return d.toDateString();
 };
 
 const getTimeString = (timestamp: number) => {
@@ -59,54 +59,48 @@ const getTimeString = (timestamp: number) => {
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
-    const today = new Date().toDateString();
-    const defaultState: AppState = {
-      queues: [],
-      assistantRecords: [],
-      lokets: DEFAULT_LOKETS,
-      users: DEFAULT_USERS,
-      serviceTypes: DEFAULT_SERVICE_TYPES,
-      nextNumber: 1,
-      lastDate: today,
-      gasUrl: DEFAULT_GAS_URL,
-      spreadsheetUrl: TARGET_SHEET_URL
-    };
+    const today = getTodayDateString();
+    let savedParsed: any = null;
 
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.lastDate === today) {
-          return { 
-            ...defaultState,
-            ...parsed,
-            assistantRecords: parsed.assistantRecords || [],
-            spreadsheetUrl: TARGET_SHEET_URL,
-            lokets: parsed.lokets || DEFAULT_LOKETS,
-            users: parsed.users || DEFAULT_USERS
-          };
-        }
-      }
-    } catch (error) {
-      console.warn("Gagal memuat state:", error);
+      if (saved) savedParsed = JSON.parse(saved);
+    } catch (e) {
+      console.warn("Gagal parse localStorage:", e);
     }
+
+    // 1. Data Konfigurasi (Selalu ambil dari storage jika ada, jika tidak pakai default)
+    const configState = {
+      users: savedParsed?.users || DEFAULT_USERS,
+      lokets: savedParsed?.lokets || DEFAULT_LOKETS,
+      serviceTypes: savedParsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
+      gasUrl: savedParsed?.gasUrl || DEFAULT_GAS_URL,
+      spreadsheetUrl: savedParsed?.spreadsheetUrl || TARGET_SHEET_URL,
+    };
+
+    // 2. Data Operasional (Reset jika ganti hari)
+    const isSameDay = savedParsed?.lastDate === today;
     
-    return defaultState;
+    return {
+      ...configState,
+      queues: isSameDay ? (savedParsed?.queues || []) : [],
+      assistantRecords: isSameDay ? (savedParsed?.assistantRecords || []) : [],
+      nextNumber: isSameDay ? (savedParsed?.nextNumber || 1) : 1,
+      lastDate: today,
+    };
   });
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.warn("Gagal menyimpan state:", e);
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   const syncToSheets = async (payload: any) => {
     if (!state.gasUrl) return;
+    setSyncStatus('syncing');
     try {
       await fetch(state.gasUrl, {
         method: 'POST',
@@ -114,8 +108,10 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
+      setSyncStatus('idle');
     } catch (e) {
       console.error("[Sync Error]:", e);
+      setSyncStatus('error');
     }
   };
 
@@ -139,7 +135,7 @@ const App: React.FC = () => {
     syncToSheets({
       action: 'ADD',
       number: `A-${newTicket.number.toString().padStart(3, '0')}`,
-      date: getTodayDateString(),
+      date: new Date().toLocaleDateString('id-ID'),
       timeTaken: getTimeString(timestamp)
     });
   }, [state.nextNumber, state.gasUrl]);
@@ -165,7 +161,7 @@ const App: React.FC = () => {
       action: 'UPDATE',
       status: 'CALLING',
       number: `A-${nextInLine.number.toString().padStart(3, '0')}`,
-      date: getTodayDateString(),
+      date: new Date().toLocaleDateString('id-ID'),
       timeCalled: getTimeString(startTime),
       loket: loketName,
       handledBy: user?.name || npp 
@@ -192,7 +188,7 @@ const App: React.FC = () => {
       action: 'UPDATE',
       status: 'COMPLETED',
       number: `A-${queueItem.number.toString().padStart(3, '0')}`,
-      date: getTodayDateString(),
+      date: new Date().toLocaleDateString('id-ID'),
       timeCompleted: getTimeString(endTime),
       serviceType: serviceType,
       handledBy: user?.name || (queueItem.handledByNpp || '')
@@ -220,7 +216,7 @@ const App: React.FC = () => {
 
     syncToSheets({
       action: 'ASSISTANT_LOG',
-      date: getTodayDateString(),
+      date: new Date().toLocaleDateString('id-ID'),
       time: getTimeString(timestamp),
       petugas: user?.name || npp,
       loket: loket?.name || loketId,
@@ -231,6 +227,13 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
+      {syncStatus === 'syncing' && (
+        <div className="fixed top-4 right-4 bg-white px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border border-blue-100 z-[100]">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
+          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Sinkronisasi Cloud...</span>
+        </div>
+      )}
+      
       <div className="w-full max-w-4xl space-y-12">
         <Header />
         <div className="flex flex-col items-center space-y-16">
