@@ -8,8 +8,8 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_v12';
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
+const STORAGE_KEY = 'bpjs_jember_v13';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
 const DEFAULT_LOKETS: Loket[] = [
@@ -86,17 +86,27 @@ const App: React.FC = () => {
   }, [state]);
 
   const syncToSheets = async (payload: any) => {
-    if (!state.gasUrl) return;
+    if (!state.gasUrl) {
+      console.warn('Sync aborted: No GAS URL configured');
+      return;
+    }
+    
     setSyncStatus('syncing');
+    console.log('Syncing to Cloud:', payload);
+
     try {
       await fetch(state.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
         body: JSON.stringify(payload)
       });
+      
       setSyncStatus('idle');
     } catch (e) {
+      console.error('Cloud Sync Error:', e);
       setSyncStatus('error');
     }
   };
@@ -106,6 +116,7 @@ const App: React.FC = () => {
     const isMjkn = type === 'MJKN';
     const number = isMjkn ? state.nextMjknNumber : state.nextNumber;
     const prefix = isMjkn ? 'MJKN' : 'A';
+    const dateStr = new Date().toISOString().split('T')[0];
     
     const newTicket: QueueItem = {
       id: `q-${timestamp}`,
@@ -127,7 +138,7 @@ const App: React.FC = () => {
       action: 'ADD',
       "Nomor Antrean": `${prefix}-${number.toString().padStart(3, '0')}`,
       "Status Pengerjaan": "WAITING",
-      "Tanggal": new Date().toLocaleDateString('id-ID'),
+      "Tanggal": dateStr,
       "Waktu Ambil": getTimeString(timestamp)
     });
   }, [state.nextNumber, state.nextMjknNumber, state.gasUrl]);
@@ -135,9 +146,8 @@ const App: React.FC = () => {
   const handleCallNext = useCallback((loketId: string, npp: string) => {
     const user = state.users.find(u => u.npp === npp);
     const isAsisten = user?.role === 'ASISTEN_ADMIN';
-    
-    // Asisten panggil MJKN, Admin panggil REGULER (Prefix A)
     const targetPrefix = isAsisten ? 'MJKN' : 'A';
+    
     const nextInLine = state.queues
       .filter(q => q.status === QueueStatus.WAITING && q.prefix === targetPrefix)
       .sort((a, b) => a.number - b.number)[0];
@@ -197,10 +207,12 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      {syncStatus === 'syncing' && (
-        <div className="fixed top-4 right-4 bg-white px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border border-blue-100 z-[100]">
-          <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
-          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-xs">Cloud Sync...</span>
+      {syncStatus !== 'idle' && (
+        <div className={`fixed top-4 right-4 px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border z-[100] ${syncStatus === 'syncing' ? 'bg-white border-blue-100' : 'bg-red-50 border-red-200'}`}>
+          <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : 'bg-red-500'}`}></div>
+          <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : 'text-red-600'}`}>
+            {syncStatus === 'syncing' ? 'Cloud Sync...' : 'Sync Error!'}
+          </span>
         </div>
       )}
       <div className="w-full max-w-4xl space-y-12">
@@ -223,8 +235,8 @@ const App: React.FC = () => {
           onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
-          onUpdateGasUrl={(url) => setState(prev => ({...prev, gasUrl: url}))}
-          onUpdateSpreadsheetUrl={(url) => setState(prev => ({...prev, spreadsheetUrl: url}))}
+          onUpdateGasUrl={(url) => setState(prev => ({...prev, gasUrl: url.trim()}))}
+          onUpdateSpreadsheetUrl={(url) => setState(prev => ({...prev, spreadsheetUrl: url.trim()}))}
           onUpdateLokets={(l) => setState(prev => ({...prev, lokets: l}))}
         />
       )}
