@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { QueueStatus, QueueItem, Loket, AppState, User } from './types.ts';
+import { QueueStatus, QueueItem, Loket, AppState, User, AssistantRecord } from './types.ts';
 import Header from './components/Header.tsx';
 import QueueButton from './components/QueueButton.tsx';
 import LoketSection from './components/LoketSection.tsx';
@@ -8,7 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_queue_state_v6';
+const STORAGE_KEY = 'bpjs_queue_state_v7';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzotraoUKoJY9mgzHKo1e6PtXrHCLRaeJbqrO2D8Yk8BBcv16OFcyowLKTMwCMftupKTA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -41,6 +41,7 @@ const DEFAULT_USERS: User[] = [
   { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
   { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
   { id: 'u3', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-3' },
+  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-1' },
 ];
 
 const getTodayDateString = () => {
@@ -61,6 +62,7 @@ const App: React.FC = () => {
     const today = new Date().toDateString();
     const defaultState: AppState = {
       queues: [],
+      assistantRecords: [],
       lokets: DEFAULT_LOKETS,
       users: DEFAULT_USERS,
       serviceTypes: DEFAULT_SERVICE_TYPES,
@@ -78,7 +80,8 @@ const App: React.FC = () => {
           return { 
             ...defaultState,
             ...parsed,
-            spreadsheetUrl: TARGET_SHEET_URL, // Selalu gunakan link yang baru
+            assistantRecords: parsed.assistantRecords || [],
+            spreadsheetUrl: TARGET_SHEET_URL,
             lokets: parsed.lokets || DEFAULT_LOKETS,
             users: parsed.users || DEFAULT_USERS
           };
@@ -196,13 +199,48 @@ const App: React.FC = () => {
     });
   }, [state.lokets, state.queues, state.users, state.gasUrl]);
 
+  const handleAssistantRecord = useCallback((npp: string, loketId: string, serviceType: string, cardNumber: string) => {
+    const timestamp = Date.now();
+    const newRecord: AssistantRecord = {
+      id: `ar-${timestamp}`,
+      timestamp,
+      npp,
+      loketId,
+      serviceType,
+      cardNumber
+    };
+
+    setState(prev => ({
+      ...prev,
+      assistantRecords: [newRecord, ...prev.assistantRecords]
+    }));
+
+    const user = state.users.find(u => u.npp === npp);
+    const loket = state.lokets.find(l => l.id === loketId);
+
+    syncToSheets({
+      action: 'ASSISTANT_LOG',
+      date: getTodayDateString(),
+      time: getTimeString(timestamp),
+      petugas: user?.name || npp,
+      loket: loket?.name || loketId,
+      service: serviceType,
+      cardNumber: cardNumber
+    });
+  }, [state.users, state.lokets, state.gasUrl]);
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
       <div className="w-full max-w-4xl space-y-12">
         <Header />
         <div className="flex flex-col items-center space-y-16">
           <QueueButton onClick={handleTakeQueue} />
-          <LoketSection lokets={state.lokets} queues={state.queues} nextQueue={state.queues.find(q => q.status === QueueStatus.WAITING)} />
+          <LoketSection 
+            lokets={state.lokets} 
+            queues={state.queues} 
+            users={state.users}
+            nextQueue={state.queues.find(q => q.status === QueueStatus.WAITING)} 
+          />
           <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING).length} />
           <div className="flex flex-col items-center space-y-4">
             <button onClick={() => setIsAdminOpen(true)} className="flex items-center space-x-2 text-slate-400 hover:text-blue-600 transition-colors duration-200 bg-white px-6 py-2 rounded-full shadow-sm">
@@ -223,11 +261,12 @@ const App: React.FC = () => {
           onClose={() => setIsAdminOpen(false)}
           onReset={() => {
             if(confirm('Reset semua antrean hari ini?')) {
-              setState(prev => ({...prev, queues: [], lokets: prev.lokets.map(l => ({...l, currentQueueId: undefined})), nextNumber: 1}));
+              setState(prev => ({...prev, queues: [], assistantRecords: [], lokets: prev.lokets.map(l => ({...l, currentQueueId: undefined})), nextNumber: 1}));
             }
           }}
           onCallNext={handleCallNext}
           onComplete={handleCompleteQueue}
+          onAssistantLog={handleAssistantRecord}
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
           onUpdateGasUrl={(url) => setState(prev => ({...prev, gasUrl: url}))}

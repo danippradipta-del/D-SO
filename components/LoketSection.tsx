@@ -1,24 +1,33 @@
 
 import React from 'react';
-import { Loket, QueueItem, QueueStatus } from '../types.ts';
+import { Loket, QueueItem, User } from '../types.ts';
 
 interface LoketSectionProps {
   lokets: Loket[];
   queues: QueueItem[];
+  users: User[];
   nextQueue?: QueueItem;
 }
 
-const LoketSection: React.FC<LoketSectionProps> = ({ lokets, queues, nextQueue }) => {
+const LoketSection: React.FC<LoketSectionProps> = ({ lokets, queues, users, nextQueue }) => {
   return (
     <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full`}>
       {lokets.map((loket) => {
         const currentQueue = queues.find(q => q.id === loket.currentQueueId);
+        const assignedUser = users.find(u => u.assignedLoketId === loket.id);
+        const isAssistant = assignedUser?.role === 'ASISTEN_ADMIN';
+
         const colorClass = loket.color === 'blue' ? 'text-blue-600 bg-blue-100' : 
                          loket.color === 'pink' ? 'text-pink-600 bg-pink-100' :
-                         'text-purple-600 bg-purple-100';
+                         loket.color === 'purple' ? 'text-purple-600 bg-purple-100' :
+                         loket.color === 'emerald' ? 'text-emerald-600 bg-emerald-100' :
+                         'text-slate-600 bg-slate-100';
+
         const barColor = loket.color === 'blue' ? 'bg-blue-600' : 
                         loket.color === 'pink' ? 'bg-pink-600' :
-                        'bg-purple-600';
+                        loket.color === 'purple' ? 'bg-purple-600' :
+                        loket.color === 'emerald' ? 'bg-emerald-600' :
+                        'bg-slate-600';
 
         return (
           <div key={loket.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center space-y-4 hover:shadow-md transition-shadow duration-300">
@@ -29,9 +38,16 @@ const LoketSection: React.FC<LoketSectionProps> = ({ lokets, queues, nextQueue }
             </div>
             <div className="text-center">
               <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">{loket.name}</p>
-              <p className="text-4xl font-black text-slate-800 mt-1">
-                {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '-'}
-              </p>
+              {isAssistant ? (
+                <div className="mt-2 px-3 py-1 bg-amber-50 rounded-lg border border-amber-100">
+                  <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Pendaftaran Mandiri</span>
+                  <p className="text-sm font-bold text-slate-800">ASISTEN AKTIF</p>
+                </div>
+              ) : (
+                <p className="text-4xl font-black text-slate-800 mt-1">
+                  {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '-'}
+                </p>
+              )}
             </div>
             <div className={`h-1.5 w-12 rounded-full ${barColor} opacity-50`}></div>
           </div>

@@ -7,7 +7,7 @@ export const QueueStatus = {
 
 export type QueueStatus = typeof QueueStatus[keyof typeof QueueStatus];
 
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'ASISTEN_ADMIN';
 
 export interface User {
   id: string;
@@ -32,6 +32,15 @@ export interface QueueItem {
   handledByNpp?: string;
 }
 
+export interface AssistantRecord {
+  id: string;
+  timestamp: number;
+  npp: string;
+  loketId: string;
+  serviceType: string;
+  cardNumber: string;
+}
+
 export interface Loket {
   id: string;
   name: string;
@@ -41,6 +50,7 @@ export interface Loket {
 
 export interface AppState {
   queues: QueueItem[];
+  assistantRecords: AssistantRecord[];
   lokets: Loket[];
   users: User[];
   serviceTypes: string[];

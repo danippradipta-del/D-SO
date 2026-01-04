@@ -12,12 +12,10 @@ const initApp = () => {
         <App />
       </React.StrictMode>
     );
-  } else {
-    console.error("Gagal: Elemen #root tidak ditemukan di DOM.");
   }
 };
 
-// Pastikan DOM sudah siap
+// Menjamin DOM sudah siap sebelum mounting
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
