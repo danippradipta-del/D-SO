@@ -8,8 +8,8 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-// Menggunakan key yang lebih spesifik untuk mencegah konflik
-const STORAGE_KEY = 'bpjs_jember_so_permanent_v1';
+// Gunakan key yang sangat spesifik dan permanen
+const STORAGE_KEY = 'bpjs_jember_so_final_v1';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
@@ -17,6 +17,7 @@ const DEFAULT_LOKETS: Loket[] = [
   { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
   { id: 'loket-2', name: 'LOKET 2', color: 'pink' },
   { id: 'loket-3', name: 'LOKET 3', color: 'purple' },
+  { id: 'loket-4', name: 'LOKET 4', color: 'emerald' },
 ];
 
 const DEFAULT_USERS: User[] = [
@@ -24,7 +25,12 @@ const DEFAULT_USERS: User[] = [
   { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
   { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
   { id: 'u3', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-3' },
-  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN' },
+  { id: 'u-assist', name: 'Asisten Layanan', npp: '99999', email: 'asisten@bpjs-kesehatan.go.id', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
+  // Tambahan Petugas Standby sesuai permintaan
+  { id: 'u4', name: 'Rina Wijaya', npp: '250201', email: '250201@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u5', name: 'Budi Santoso', npp: '250202', email: '250202@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u6', name: 'Siti Aminah', npp: '250203', email: '250203@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u7', name: 'Dedi Kurniawan', npp: '250204', email: '250204@bpjs-kesehatan.go.id', role: 'ADMIN' },
 ];
 
 const DEFAULT_SERVICE_TYPES = [
@@ -64,35 +70,38 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
 
-    // Data Master (Users, Lokets, ServiceTypes) harus selalu dari storage atau default, tidak reset per hari
-    const masterData = {
-      users: parsed?.users || DEFAULT_USERS,
-      lokets: (parsed?.lokets || DEFAULT_LOKETS).map((l: Loket) => ({
-        ...l,
-        currentQueueId: parsed?.lastDate === today ? l.currentQueueId : undefined // Reset status pemanggilan loket jika hari baru
-      })),
-      serviceTypes: parsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
-      gasUrl: parsed?.gasUrl || DEFAULT_GAS_URL,
-      spreadsheetUrl: parsed?.spreadsheetUrl || TARGET_SHEET_URL,
-    };
+    // MASTER DATA: Harus selalu persisten (tidak boleh terhapus pergantian hari)
+    const users = parsed?.users || DEFAULT_USERS;
+    const lokets = parsed?.lokets || DEFAULT_LOKETS;
+    const serviceTypes = parsed?.serviceTypes || DEFAULT_SERVICE_TYPES;
+    const gasUrl = parsed?.gasUrl || DEFAULT_GAS_URL;
+    const spreadsheetUrl = parsed?.spreadsheetUrl || TARGET_SHEET_URL;
 
-    // Data Transaksi (Queues, Numbers) reset HANYA jika tanggal berganti
-    const transactionData = {
-      queues: parsed?.lastDate === today ? (parsed?.queues || []) : [],
-      assistantRecords: parsed?.lastDate === today ? (parsed?.assistantRecords || []) : [],
-      nextNumber: parsed?.lastDate === today ? (parsed?.nextNumber || 1) : 1,
-      nextMjknNumber: parsed?.lastDate === today ? (parsed?.nextMjknNumber || 1) : 1,
+    // TRANSACTION DATA: Reset hanya jika tanggal berganti
+    const isSameDay = parsed?.lastDate === today;
+    
+    return {
+      users,
+      lokets: lokets.map((l: Loket) => ({
+        ...l,
+        currentQueueId: isSameDay ? l.currentQueueId : undefined
+      })),
+      serviceTypes,
+      gasUrl,
+      spreadsheetUrl,
+      queues: isSameDay ? (parsed?.queues || []) : [],
+      assistantRecords: isSameDay ? (parsed?.assistantRecords || []) : [],
+      nextNumber: isSameDay ? (parsed?.nextNumber || 1) : 1,
+      nextMjknNumber: isSameDay ? (parsed?.nextMjknNumber || 1) : 1,
       lastDate: today,
     };
-
-    return { ...masterData, ...transactionData };
   });
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
-  // Efek untuk menyimpan setiap kali ada perubahan state
+  // Simpan setiap perubahan ke storage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
@@ -122,7 +131,6 @@ const App: React.FC = () => {
     setState(prev => {
       const number = isMjkn ? prev.nextMjknNumber : prev.nextNumber;
       const prefix = isMjkn ? 'MJKN' : 'A';
-      
       const newTicket: QueueItem = {
         id: `q-${timestamp}`,
         number: number,
