@@ -23,6 +23,7 @@ export interface QueueItem {
   id: string;
   number: number;
   prefix: string;
+  rawNumber: string; // ID asli dari kolom Spreadsheet
   status: QueueStatus;
   timestamp: number;
   startTime?: number;
