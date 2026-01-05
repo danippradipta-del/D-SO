@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueueStatus, QueueItem, Loket, AppState, User } from './types.ts';
 import Header from './components/Header.tsx';
@@ -65,11 +66,12 @@ const getVal = (row: any, ...keys: string[]) => {
   return null;
 };
 
-const mapCloudRowToQueueItem = (row: any): QueueItem => {
+const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
   const nomerRaw = (getVal(row, "Nomor Antrean", "noantrean", "nomer") || "").toString().trim();
+  if (!nomerRaw || nomerRaw === "" || nomerRaw.toLowerCase() === "nomor antrean") return null;
+
   const rawStatus = (getVal(row, "Status Pengerjaan", "status") || "").toString().trim().toUpperCase();
   
-  // Parsing Prefix dan Number dengan TRIM (Mencegah mismatch spasi)
   let prefix = "A";
   let number = 0;
   
@@ -78,7 +80,6 @@ const mapCloudRowToQueueItem = (row: any): QueueItem => {
     prefix = parts[0].trim().toUpperCase();
     number = parseInt(parts[1].trim()) || 0;
   } else {
-    // Regex untuk format seperti "MJKN001" atau "A001"
     const match = nomerRaw.match(/^([a-zA-Z]+)?\s*(\d+)$/);
     if (match) {
       prefix = (match[1] || "A").trim().toUpperCase();
@@ -86,20 +87,26 @@ const mapCloudRowToQueueItem = (row: any): QueueItem => {
     }
   }
   
-  // Normalisasi Status: Kosong/Belum/Wait/Waiting dianggap WAITING
   let status: QueueStatus = QueueStatus.WAITING;
-  if (rawStatus.includes('CALL') || rawStatus.includes('PANGGIL')) status = QueueStatus.CALLING;
-  else if (rawStatus.includes('COMPLET') || rawStatus.includes('SELESAI') || rawStatus.includes('DONE')) status = QueueStatus.COMPLETED;
+  // Deteksi status Indonesia atau Inggris
+  if (rawStatus.includes('DILAYANI') || rawStatus.includes('CALL') || rawStatus.includes('PANGGIL')) {
+    status = QueueStatus.CALLING;
+  } else if (rawStatus.includes('SELESAI') || rawStatus.includes('COMPLET') || rawStatus.includes('DONE')) {
+    status = QueueStatus.COMPLETED;
+  } else if (rawStatus.includes('MENUNGGU') || rawStatus.includes('WAITING') || rawStatus.includes('WAIT')) {
+    status = QueueStatus.WAITING;
+  }
 
   const dateStr = getLocalDate();
   const timeStr = getVal(row, "Waktu Ambil", "waktu", "jam") || "00:00:00";
-  const timestamp = new Date(`${dateStr}T${timeStr}`).getTime() || Date.now();
+  let timestamp = new Date(`${dateStr}T${timeStr}`).getTime();
+  if (isNaN(timestamp)) timestamp = Date.now() - (1000000 - index);
 
   const loketRaw = getVal(row, "Loket") || "";
   const loketId = loketRaw ? `loket-${loketRaw.toString().replace(/[^0-9]/g, '')}` : undefined;
 
   return {
-    id: `q-${nomerRaw}-${dateStr}`,
+    id: `q-${nomerRaw}-${dateStr}-${index}`,
     number,
     prefix,
     rawNumber: nomerRaw, 
@@ -167,7 +174,10 @@ const App: React.FC = () => {
       const cloudData = await response.json();
       
       if (cloudData && Array.isArray(cloudData.queues)) {
-        const mappedQueues = cloudData.queues.map(mapCloudRowToQueueItem);
+        const mappedQueues = cloudData.queues
+          .map((row: any, idx: number) => mapCloudRowToQueueItem(row, idx))
+          .filter((q: any): q is QueueItem => q !== null);
+
         setState(prev => ({
           ...prev,
           queues: mappedQueues,
@@ -224,7 +234,7 @@ const App: React.FC = () => {
     const formattedNo = `${prefix}-${number.toString().padStart(3, '0')}`;
     
     const newTicket: QueueItem = {
-      id: `q-${formattedNo}-${dateStr}`,
+      id: `q-${formattedNo}-${dateStr}-${timestamp}`,
       number,
       prefix,
       rawNumber: formattedNo,
@@ -236,7 +246,6 @@ const App: React.FC = () => {
     const nextNumber = isMjkn ? state.nextNumber : state.nextNumber + 1;
     const nextMjknNumber = isMjkn ? state.nextMjknNumber + 1 : state.nextMjknNumber;
 
-    // Fix: removed duplicate 'nextNumber' property from setState object literal
     setState(prev => ({
       ...prev,
       queues: [...prev.queues, newTicket],
@@ -247,7 +256,7 @@ const App: React.FC = () => {
     pushToCloud({
       action: 'ADD',
       "Nomor Antrean": formattedNo,
-      "Status Pengerjaan": "WAITING",
+      "Status Pengerjaan": "Menunggu",
       "Tanggal": dateStr,
       "Waktu Ambil": getTimeString(timestamp),
       nextNumber,
@@ -257,21 +266,18 @@ const App: React.FC = () => {
 
   const handleCallNext = useCallback((loketId: string, npp: string) => {
     const user = state.users.find(u => u.npp === npp);
-    // Prefix target dibersihkan dari spasi
-    const targetPrefix = (user?.role === 'ASISTEN_ADMIN' ? 'MJKN' : 'A').trim().toUpperCase();
+    const isAsisten = user?.role === 'ASISTEN_ADMIN';
+    const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
     
-    // Logika Pemilihan Antrean:
-    // 1. Status harus WAITING
-    // 2. Jika Super Admin: Boleh panggil prefix apapun
-    // 3. Jika Admin/Asisten: Harus sesuai prefix (A/MJKN)
     const waitingQueues = state.queues
-      .filter(q => q.status === QueueStatus.WAITING && (user?.role === 'SUPER_ADMIN' || q.prefix === targetPrefix))
+      .filter(q => q.status === QueueStatus.WAITING && (isAdmin || q.prefix === 'MJKN'))
       .sort((a, b) => a.timestamp - b.timestamp);
 
     const nextInLine = waitingQueues[0];
 
     if (!nextInLine) {
-      alert(`Antrean ${targetPrefix} belum tersedia. Pastikan prefix di Spreadsheet tertulis A atau MJKN dengan benar.`);
+      const typeLabel = isAsisten ? "MJKN" : "Apapun (A atau MJKN)";
+      alert(`Antrean ${typeLabel} dengan status MENUNGGU tidak ditemukan di Spreadsheet.`);
       fetchGlobalState(true);
       return;
     }
@@ -287,7 +293,7 @@ const App: React.FC = () => {
       pushToCloud({
         action: 'UPDATE',
         "Nomor Antrean": nextInLine.rawNumber,
-        "Status Pengerjaan": "CALLING",
+        "Status Pengerjaan": "Dilayani",
         "Waktu Panggil": getTimeString(startTime),
         "Loket": loketName,
         "Nama FL (Petugas)": user?.name || npp,
@@ -314,7 +320,7 @@ const App: React.FC = () => {
       pushToCloud({
         action: 'UPDATE',
         "Nomor Antrean": queueItem.rawNumber,
-        "Status Pengerjaan": "COMPLETED",
+        "Status Pengerjaan": "Selesai",
         "Waktu Selesai": getTimeString(endTime),
         "Jenis Layanan": serviceType,
         "Waktu Tunggu": formatDuration(waitMs),
@@ -330,15 +336,14 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-xl font-black text-slate-800 uppercase italic">Sinkronisasi {TARGET_SHEET_NAME}...</h2>
-        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Menyisir data antrean di Spreadsheet</p>
+        <h2 className="text-xl font-black text-slate-800 uppercase italic">Sinkronisasi Jember...</h2>
+        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Memastikan status layanan terupdate...</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      {/* Cloud Status Indicator */}
       <button 
         onClick={() => fetchGlobalState(true)}
         className={`fixed top-4 right-4 px-5 py-2.5 rounded-full shadow-xl flex flex-col items-start border z-[100] transition-all duration-500 hover:scale-105 active:scale-95 ${
@@ -377,7 +382,7 @@ const App: React.FC = () => {
                 <span className="text-xs font-black uppercase tracking-[0.2em]">Panel Operasional Petugas</span>
              </button>
              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.3em] animate-pulse italic text-center max-w-sm">
-               Data tersinkronisasi dengan {TARGET_SHEET_NAME}. Gunakan NPP untuk memanggil antrean.
+               Status Antrean: Menunggu, Dilayani, dan Selesai.
              </p>
           </div>
         </div>

@@ -62,11 +62,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   const [selectedServices, setSelectedServices] = useState<{ [key: string]: string }>({});
   const [cardNumbers, setCardNumbers] = useState<{ [key: string]: string }>({});
   
-  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const [isAddLoketModalOpen, setIsAddLoketModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState<Partial<User>>({ role: 'ADMIN' });
-  const [newLoket, setNewLoket] = useState<Partial<Loket>>({ color: 'blue' });
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const user = users.find(u => u.npp === loginNpp);
@@ -86,11 +81,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
     onUpdateUsers(updatedUsers);
   };
 
-  const handleUpdateUserRole = (userId: string, newRole: UserRole) => {
-    const updatedUsers = users.map(u => u.id === userId ? { ...u, role: newRole } : u);
-    onUpdateUsers(updatedUsers);
-  };
-
   const handleCompleteWithData = (loketId: string) => {
     const service = selectedServices[loketId];
     const card = cardNumbers[loketId];
@@ -99,8 +89,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
     if (card && (card.length !== 13 || !/^\d+$/.test(card))) return alert('Nomor kartu harus 13 digit angka!');
 
     onComplete(loketId, service, card);
-    
-    // Clear temp state
     const newServices = { ...selectedServices }; delete newServices[loketId]; setSelectedServices(newServices);
     const newCards = { ...cardNumbers }; delete newCards[loketId]; setCardNumbers(newCards);
   };
@@ -116,24 +104,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
             <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black italic">D-SO</div>
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">Login Petugas</h2>
-          <p className="text-slate-500 text-sm mb-8 font-medium italic">Silakan gunakan NPP untuk mengakses panel operasional.</p>
+          <p className="text-slate-500 text-sm mb-8 font-medium italic">Gunakan NPP Anda untuk operasional loket.</p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input 
-              type="text" 
-              placeholder="Masukkan NPP" 
-              className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 transition-all font-bold" 
-              value={loginNpp} 
-              onChange={e => setLoginNpp(e.target.value)} 
-              required 
-            />
-            <input 
-              type="password" 
-              placeholder="Password (12345678)" 
-              className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 transition-all font-bold" 
-              value={loginPassword} 
-              onChange={e => setLoginPassword(e.target.value)} 
-              required 
-            />
+            <input type="text" placeholder="Masukkan NPP" className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" value={loginNpp} onChange={e => setLoginNpp(e.target.value)} required />
+            <input type="password" placeholder="Password (12345678)" className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required />
             <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-colors uppercase tracking-widest text-xs">Masuk Panel</button>
             <button type="button" onClick={onClose} className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 text-xs uppercase">Batal</button>
           </form>
@@ -155,254 +129,95 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
         <div className="flex items-center space-x-4">
           <nav className="bg-slate-100 p-1.5 rounded-2xl flex space-x-1">
             <button onClick={() => setActiveTab('service')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'service' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Monitor Layanan</button>
-            {isAdmin && <button onClick={() => setActiveTab('users')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Database Petugas</button>}
-            {isSuper && <button onClick={() => setActiveTab('lokets')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'lokets' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Loket</button>}
+            {isAdmin && <button onClick={() => setActiveTab('users')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Petugas</button>}
             {isSuper && <button onClick={() => setActiveTab('settings')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'settings' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Sistem</button>}
           </nav>
           <div className="h-8 w-px bg-slate-200 mx-2"></div>
-          <button onClick={() => setCurrentUser(null)} title="Logout" className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg>
-          </button>
-          <button onClick={onClose} title="Tutup Panel" className="p-3 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          <button onClick={() => setCurrentUser(null)} className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg></button>
+          <button onClick={onClose} className="p-3 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
         <div className="max-w-7xl mx-auto">
           {activeTab === 'service' && (
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                {lokets
-                  .filter(l => isAdmin || l.id === currentUser.assignedLoketId)
-                  .map(loket => {
-                    const currentQueue = queues.find(q => q.id === loket.currentQueueId);
-                    const isCalling = !!currentQueue;
-                    const assignedUser = users.find(u => u.assignedLoketId === loket.id);
-                    
-                    // Prefix target dibersihkan dan distandarisasi
-                    const isAssistant = assignedUser?.role === 'ASISTEN_ADMIN';
-                    const targetPrefix = (isAssistant ? 'MJKN' : 'A').trim().toUpperCase();
-                    
-                    // Hitung antrean menunggu: Super Admin melihat semua, lainnya sesuai prefix
-                    const waitingCount = queues.filter(q => 
-                      q.status === QueueStatus.WAITING && 
-                      (currentUser.role === 'SUPER_ADMIN' || q.prefix === targetPrefix)
-                    ).length;
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              {lokets
+                .filter(l => isAdmin || l.id === currentUser.assignedLoketId)
+                .map(loket => {
+                  const currentQueue = queues.find(q => q.id === loket.currentQueueId);
+                  const isCalling = !!currentQueue;
+                  const assignedUser = users.find(u => u.assignedLoketId === loket.id);
+                  
+                  const activeRole = assignedUser?.role || currentUser.role;
+                  const canCallAnything = activeRole === 'ADMIN' || activeRole === 'SUPER_ADMIN';
+                  
+                  const waitingCount = queues.filter(q => 
+                    q.status === QueueStatus.WAITING && (canCallAnything || q.prefix === 'MJKN')
+                  ).length;
 
-                    const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : loket.color === 'emerald' ? 'emerald' : 'blue';
-                    
-                    return (
-                      <div key={loket.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[500px] transition-all hover:border-blue-200">
-                        <div className={`absolute top-0 left-0 w-full h-2 bg-${accentColor}-600`}></div>
-                        
-                        <div className="space-y-6">
-                          <div className="flex justify-between items-start">
-                             <div className="flex-1 mr-4">
-                               <h4 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{loket.name}</h4>
-                               
-                               {isAdmin ? (
-                                 <div className="mt-4 space-y-3 animate-in fade-in duration-300">
-                                   <div>
-                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Pilih Petugas di Loket Ini</label>
-                                     <select 
-                                       className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all cursor-pointer"
-                                       value={assignedUser?.npp || ''}
-                                       onChange={(e) => handleAssignPetugas(loket.id, e.target.value)}
-                                     >
-                                       <option value="">-- Standby --</option>
-                                       {users.map(u => (
-                                         <option key={u.id} value={u.npp}>{u.name} ({u.npp})</option>
-                                       ))}
-                                     </select>
-                                   </div>
-                                   {assignedUser && (
-                                     <div>
-                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipe Antrean Petugas</label>
-                                       <select 
-                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all cursor-pointer"
-                                         value={assignedUser.role}
-                                         onChange={(e) => handleUpdateUserRole(assignedUser.id, e.target.value as UserRole)}
-                                       >
-                                         <option value="ADMIN">REGULER (Prefix A)</option>
-                                         <option value="ASISTEN_ADMIN">MJKN (Prefix MJKN)</option>
-                                         {isSuper && <option value="SUPER_ADMIN">SUPER ADMIN (Semua)</option>}
-                                       </select>
-                                     </div>
-                                   )}
-                                 </div>
-                               ) : (
-                                 <div className="mt-2">
-                                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide italic">
-                                     Nama Petugas: {assignedUser ? assignedUser.name : 'BELUM TERDAFTAR'}
-                                   </p>
-                                 </div>
-                               )}
+                  const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : loket.color === 'emerald' ? 'emerald' : 'blue';
+                  
+                  return (
+                    <div key={loket.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[500px]">
+                      <div className={`absolute top-0 left-0 w-full h-2 bg-${accentColor}-600`}></div>
+                      <div className="space-y-6">
+                        <div className="flex justify-between items-start">
+                           <div>
+                             <h4 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{loket.name}</h4>
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                               Petugas: {assignedUser ? assignedUser.name : 'STANDBY / LOGOUT'}
+                             </p>
+                           </div>
+                           <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap shadow-sm ${canCallAnything ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                             {canCallAnything ? 'ADMIN UNIVERSAL' : 'ASISTEN MJKN'}
+                           </span>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Nomor Aktif (Dilayani)</span>
+                          <span className={`text-6xl font-black tabular-nums tracking-tighter ${isCalling ? `text-${accentColor}-600` : 'text-slate-200'}`}>
+                            {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '---'}
+                          </span>
+                        </div>
+
+                        {isCalling && currentQueue && (
+                          <div className="space-y-4">
+                             <div className="space-y-2">
+                                <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Menunggu" />
+                                <SLATimer startTime={currentQueue.startTime!} type="SERVICE" label="Melayani" />
                              </div>
-                             <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap shadow-sm ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                               {isAssistant ? 'Layanan MJKN' : 'Layanan Reguler'}
-                             </span>
+                             <div className="space-y-3">
+                                <input type="text" maxLength={13} placeholder="Noka JKN (13 Digit)" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500" value={cardNumbers[loket.id] || ''} onChange={e => setCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))} />
+                                <select className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500" value={selectedServices[loket.id] || ''} onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}>
+                                  <option value="">-- Pilih Layanan --</option>
+                                  {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                             </div>
                           </div>
-
-                          <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Nomor Sedang Dilayani</span>
-                            <span className={`text-6xl font-black tabular-nums tracking-tighter ${isCalling ? `text-${accentColor}-600` : 'text-slate-200'}`}>
-                              {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '---'}
-                            </span>
-                          </div>
-
-                          {isCalling && currentQueue && (
-                            <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
-                               <div className="space-y-2">
-                                  <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Total Tunggu" />
-                                  <SLATimer startTime={currentQueue.startTime!} type="SERVICE" label="Lama Layanan" />
-                               </div>
-                               
-                               <div className="space-y-3">
-                                  <div>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nomor Kartu JKN (13 Digit)</label>
-                                    <input 
-                                      type="text" 
-                                      maxLength={13}
-                                      placeholder="Contoh: 0001234567890"
-                                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 mt-1"
-                                      value={cardNumbers[loket.id] || ''}
-                                      onChange={e => setCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Jenis Layanan Peserta</label>
-                                    <select 
-                                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 mt-1"
-                                      value={selectedServices[loket.id] || ''}
-                                      onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}
-                                    >
-                                      <option value="">-- Pilih Kategori --</option>
-                                      {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                  </div>
-                               </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-8">
-                          {isCalling ? (
-                             <button 
-                               onClick={() => handleCompleteWithData(loket.id)}
-                               className={`w-full py-5 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg hover:brightness-110 uppercase text-[10px] tracking-widest transition-all active:scale-95`}
-                             >
-                               Selesaikan Layanan Ini
-                             </button>
-                          ) : (
-                             <button 
-                               disabled={waitingCount === 0 || (!isAdmin && !assignedUser)} 
-                               onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} 
-                               className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 disabled:grayscale uppercase text-[10px] tracking-widest hover:brightness-110`}
-                             >
-                               PANGGIL {currentUser.role === 'SUPER_ADMIN' ? 'ANTREAN' : targetPrefix} ({waitingCount} antrean)
-                             </button>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    );
-                })}
-              </div>
-            </div>
-          )}
-          {/* Sisa komponen tabs tetap sama */}
-          {activeTab === 'users' && isAdmin && (
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm animate-in fade-in duration-500">
-               <div className="flex justify-between items-center mb-8">
-                 <div>
-                   <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Daftar Petugas SO Jember</h3>
-                   <p className="text-slate-400 text-sm font-medium">Pengelolaan database dan penugasan loket.</p>
-                 </div>
-                 {isSuper && <button onClick={() => setIsAddUserModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-200">Tambah Petugas Baru</button>}
-               </div>
-               <div className="overflow-x-auto rounded-3xl border border-slate-50">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
-                      <tr>
-                        <th className="px-8 py-5">Nama Lengkap</th>
-                        <th className="px-8 py-5">NPP</th>
-                        <th className="px-8 py-5">Penugasan Saat Ini</th>
-                        <th className="px-8 py-5">Otoritas</th>
-                        <th className="px-8 py-5 text-right">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm divide-y divide-slate-50 bg-white">
-                      {users.map(u => (
-                        <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-8 py-5 font-black text-slate-800">{u.name}</td>
-                          <td className="px-8 py-5 font-mono font-bold text-slate-600 bg-slate-50/30">{u.npp}</td>
-                          <td className="px-8 py-5">
-                             <select 
-                               className="bg-white border rounded-lg text-[11px] font-black py-2 px-3 outline-none focus:ring-1 ring-blue-500" 
-                               value={u.assignedLoketId || ''} 
-                               onChange={(e) => handleAssignPetugas(e.target.value, u.npp)}
-                             >
-                               <option value="">-- Standby --</option>
-                               {lokets.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                             </select>
-                          </td>
-                          <td className="px-8 py-5">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm ${u.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-600' : u.role === 'ASISTEN_ADMIN' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
-                              {u.role.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="px-8 py-5 text-right">
-                             {isSuper && u.id !== currentUser.id && (
-                               <button onClick={() => confirm('Hapus data petugas ini?') && onUpdateUsers(users.filter(item => item.id !== u.id))} className="text-red-400 hover:text-red-600 font-bold text-[10px] uppercase tracking-widest">Hapus</button>
-                             )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-               </div>
-            </div>
-          )}
-          {activeTab === 'lokets' && isSuper && (
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm animate-in fade-in duration-500">
-               <div className="flex justify-between items-center mb-8">
-                 <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Konfigurasi Counter Loket</h3>
-                 <button onClick={() => setIsAddLoketModalOpen(true)} className="bg-purple-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-purple-200">Tambah Loket Baru</button>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 {lokets.map(l => (
-                   <div key={l.id} className="p-8 bg-slate-50 border border-slate-200 rounded-[2rem] flex flex-col items-center space-y-4 hover:shadow-md transition-all">
-                     <div className={`w-12 h-2 rounded-full bg-${l.color === 'pink' ? 'pink' : l.color === 'purple' ? 'purple' : l.color === 'emerald' ? 'emerald' : 'blue'}-600`}></div>
-                     <span className="font-black text-slate-800 uppercase text-xl tracking-tighter">{l.name}</span>
-                     <button onClick={() => confirm('Hapus loket ini dari sistem?') && onUpdateLokets(lokets.filter(item => item.id !== l.id))} className="text-red-400 font-bold text-[10px] uppercase tracking-widest hover:text-red-600 pt-2">Hapus Loket</button>
-                   </div>
-                 ))}
-               </div>
-            </div>
-          )}
-          {activeTab === 'settings' && isSuper && (
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm space-y-8 animate-in fade-in duration-500">
-              <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Integrasi Sistem Cloud</h3>
-              <div className="grid grid-cols-1 gap-8">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">GAS Deployment URL (Backend Master)</label>
-                  <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-mono text-xs mt-2 outline-none focus:ring-2 ring-blue-500" value={gasUrl} onChange={e => onUpdateGasUrl(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Link Google Spreadsheet (Monitoring)</label>
-                  <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-mono text-xs mt-2 outline-none focus:ring-2 ring-blue-500" value={spreadsheetUrl} onChange={e => onUpdateSpreadsheetUrl(e.target.value)} />
-                </div>
-                <div className="pt-4 flex flex-wrap gap-4">
-                   <button onClick={onReset} className="px-8 py-4 bg-red-100 text-red-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-red-200 transition-all shadow-lg shadow-red-50">Reset Antrean Hari Ini</button>
-                   <a href={spreadsheetUrl} target="_blank" rel="noreferrer" className="px-8 py-4 bg-emerald-100 text-emerald-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-emerald-200 transition-all shadow-lg shadow-emerald-50">Lihat Dashboard Utama</a>
-                </div>
-              </div>
+
+                      <div className="mt-8">
+                        {isCalling ? (
+                           <button onClick={() => handleCompleteWithData(loket.id)} className={`w-full py-5 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg hover:brightness-110 uppercase text-[10px] tracking-widest transition-all active:scale-95`}>Selesai Layan</button>
+                        ) : (
+                           <button 
+                             disabled={waitingCount === 0 || (!isAdmin && !assignedUser)} 
+                             onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} 
+                             className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-20 disabled:grayscale uppercase text-[10px] tracking-widest hover:brightness-110`}
+                           >
+                             PANGGIL (MENUNGGU: {waitingCount})
+                           </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+              })}
             </div>
           )}
         </div>
       </main>
-      {/* Modals for Management tetap sama */}
     </div>
   );
 };
