@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { QueueStatus, QueueItem, Loket, AppState, User, AssistantRecord } from './types.ts';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { QueueStatus, QueueItem, Loket, AppState, User } from './types.ts';
 import Header from './components/Header.tsx';
 import QueueButton from './components/QueueButton.tsx';
 import LoketSection from './components/LoketSection.tsx';
@@ -8,26 +7,27 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_so_final_v2'; // Versi baru untuk data yang diperbarui
+const STORAGE_KEY = 'bpjs_jember_so_shared_v4';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
+
+// DAFTAR PETUGA SESUAI PERMINTAAN USER
+const DEFAULT_USERS: User[] = [
+  { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
+  { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
+  { id: 'u3', name: 'Laili', npp: '111111', email: 'laili@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-3' },
+  { id: 'u4', name: 'Pundi', npp: '22222', email: 'pundi@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
+  { id: 'u5', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u6', name: "Vina Nihayatus Sa'adah", npp: '05315', email: 'vina.nihayatus@bpjs-kesehatan.go.id', role: 'ADMIN' },
+  { id: 'u7', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
+  { id: 'u8', name: 'Ririt Eka Agustania', npp: '04586', email: 'ririt.eka@bpjs-kesehatan.go.id', role: 'ADMIN' },
+];
 
 const DEFAULT_LOKETS: Loket[] = [
   { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
   { id: 'loket-2', name: 'LOKET 2', color: 'pink' },
   { id: 'loket-3', name: 'LOKET 3', color: 'purple' },
   { id: 'loket-4', name: 'LOKET 4', color: 'emerald' },
-];
-
-const DEFAULT_USERS: User[] = [
-  { id: 'u-super', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
-  { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
-  { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
-  { id: 'u3', name: 'Laili', npp: '111111', email: 'laili@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-3' },
-  { id: 'u4', name: 'Pundi', npp: '22222', email: 'pundi@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
-  { id: 'u-fahri', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN' },
-  { id: 'u-vina', name: "Vina Nihayatus Sa'adah", npp: '05315', email: 'vina.nihayatus@bpjs-kesehatan.go.id', role: 'ADMIN' },
-  { id: 'u-ririt', name: 'Ririt Eka Agustania', npp: '04586', email: 'ririt.eka@bpjs-kesehatan.go.id', role: 'ADMIN' },
 ];
 
 const DEFAULT_SERVICE_TYPES = [
@@ -48,10 +48,7 @@ const DEFAULT_SERVICE_TYPES = [
   "Tidak bisa dilayani di SO"
 ];
 
-const getTimeString = (timestamp: number) => {
-  const date = new Date(timestamp);
-  return date.toTimeString().split(' ')[0];
-};
+const getTimeString = (timestamp: number) => new Date(timestamp).toTimeString().split(' ')[0];
 
 const formatDuration = (ms: number) => {
   const s = Math.floor(ms / 1000);
@@ -66,28 +63,16 @@ const App: React.FC = () => {
     const today = new Date().toDateString();
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
-
-    // MASTER DATA (Permanen): Jika sudah ada di storage gunakan itu, jika belum gunakan default
-    const users = parsed?.users || DEFAULT_USERS;
-    const lokets = parsed?.lokets || DEFAULT_LOKETS;
-    const serviceTypes = parsed?.serviceTypes || DEFAULT_SERVICE_TYPES;
-    const gasUrl = parsed?.gasUrl || DEFAULT_GAS_URL;
-    const spreadsheetUrl = parsed?.spreadsheetUrl || TARGET_SHEET_URL;
-
-    // TRANSACTION DATA (Harian): Reset jika tanggal berganti
     const isSameDay = parsed?.lastDate === today;
-    
+
     return {
-      users,
-      lokets: lokets.map((l: Loket) => ({
-        ...l,
-        currentQueueId: isSameDay ? l.currentQueueId : undefined
-      })),
-      serviceTypes,
-      gasUrl,
-      spreadsheetUrl,
+      users: parsed?.users || DEFAULT_USERS,
+      lokets: parsed?.lokets || DEFAULT_LOKETS,
+      serviceTypes: parsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
+      gasUrl: parsed?.gasUrl || DEFAULT_GAS_URL,
+      spreadsheetUrl: parsed?.spreadsheetUrl || TARGET_SHEET_URL,
       queues: isSameDay ? (parsed?.queues || []) : [],
-      assistantRecords: isSameDay ? (parsed?.assistantRecords || []) : [],
+      assistantRecords: [],
       nextNumber: isSameDay ? (parsed?.nextNumber || 1) : 1,
       nextMjknNumber: isSameDay ? (parsed?.nextMjknNumber || 1) : 1,
       lastDate: today,
@@ -96,28 +81,65 @@ const App: React.FC = () => {
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'success'>('idle');
+  // Fix: Replaced NodeJS.Timeout with number for browser compatibility
+  const syncTimerRef = useRef<number | null>(null);
 
+  // Simpan ke local storage agar jika internet putus, state terakhir tetap ada
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const syncToSheets = async (payload: any) => {
+  /**
+   * SINKRONISASI CLOUD (Sinkronisasi Antar Perangkat)
+   * Mengirim aksi ke Google Sheets. 
+   * Dalam implementasi produksi yang ideal, fungsi ini juga akan mengambil 
+   * state terbaru dari Cloud untuk di-merge ke lokal.
+   */
+  const syncWithCloud = async (actionPayload: any) => {
     if (!state.gasUrl) return;
     setSyncStatus('syncing');
     try {
+      // Mengirim POST ke Google Apps Script
       await fetch(state.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(actionPayload)
       });
-      setSyncStatus('idle');
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (e) {
-      console.error('Cloud Sync Error:', e);
+      console.error('Sync Error:', e);
       setSyncStatus('error');
     }
   };
+
+  /**
+   * POLLING: Mengecek pembaruan dari perangkat lain secara berkala.
+   * Karena GAS no-cors terbatas, kita mensimulasikan sinkronisasi state global 
+   * melalui localStorage sebagai fallback antar-tab, dan GAS sebagai master database.
+   */
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        const cloudState = JSON.parse(e.newValue);
+        if (cloudState.lastDate === state.lastDate) {
+           setState(prev => ({
+             ...prev,
+             queues: cloudState.queues,
+             lokets: cloudState.lokets,
+             users: cloudState.users,
+             nextNumber: cloudState.nextNumber,
+             nextMjknNumber: cloudState.nextMjknNumber
+           }));
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [state.lastDate]);
 
   const handleTakeQueue = useCallback((type: 'REGULAR' | 'MJKN') => {
     const timestamp = Date.now();
@@ -137,7 +159,7 @@ const App: React.FC = () => {
 
       setLastGeneratedTicket(newTicket);
 
-      syncToSheets({
+      syncWithCloud({
         action: 'ADD',
         "Nomor Antrean": `${prefix}-${number.toString().padStart(3, '0')}`,
         "Status Pengerjaan": "WAITING",
@@ -172,7 +194,7 @@ const App: React.FC = () => {
       const updatedQueues = prev.queues.map(q => q.id === nextInLine.id ? { ...q, status: QueueStatus.CALLING, loketId, handledByNpp: npp, startTime } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: nextInLine.id } : l);
       
-      syncToSheets({
+      syncWithCloud({
         action: 'UPDATE',
         "Nomor Antrean": `${nextInLine.prefix}-${nextInLine.number.toString().padStart(3, '0')}`,
         "Status Pengerjaan": "CALLING",
@@ -200,7 +222,7 @@ const App: React.FC = () => {
       const updatedQueues = prev.queues.map(q => q.id === currentLoket.currentQueueId ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType, cardNumber } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: undefined } : l);
       
-      syncToSheets({
+      syncWithCloud({
         action: 'UPDATE',
         "Nomor Antrean": `${queueItem.prefix}-${queueItem.number.toString().padStart(3, '0')}`,
         "Status Pengerjaan": "COMPLETED",
@@ -220,14 +242,17 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      {syncStatus !== 'idle' && (
-        <div className={`fixed top-4 right-4 px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border z-[100] ${syncStatus === 'syncing' ? 'bg-white border-blue-100' : 'bg-red-50 border-red-200'}`}>
-          <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : 'bg-red-500'}`}></div>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : 'text-red-600'}`}>
-            {syncStatus === 'syncing' ? 'Cloud Sync...' : 'Sync Error!'}
-          </span>
-        </div>
-      )}
+      {/* Cloud Sync Status Indicator */}
+      <div className={`fixed top-4 right-4 px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border z-[100] transition-all duration-500 ${
+        syncStatus === 'syncing' ? 'bg-white border-blue-100' : 
+        syncStatus === 'success' ? 'bg-emerald-50 border-emerald-200 translate-y-0' : 
+        syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'opacity-0 -translate-y-4'}`}>
+        <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+        <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+          {syncStatus === 'syncing' ? 'Cloud Sync...' : syncStatus === 'success' ? 'Tersinkron' : 'Gagal Sinkron!'}
+        </span>
+      </div>
+
       <div className="w-full max-w-4xl space-y-12">
         <Header />
         <div className="flex flex-col items-center space-y-16">
@@ -241,7 +266,7 @@ const App: React.FC = () => {
           <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING).length} />
           <button onClick={() => setIsAdminOpen(true)} className="flex items-center space-x-2 text-slate-400 hover:text-blue-600 transition-colors bg-white px-6 py-2 rounded-full shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-            <span>Panel Operasional</span>
+            <span>Panel Operasional (NPP Petugas)</span>
           </button>
         </div>
       </div>

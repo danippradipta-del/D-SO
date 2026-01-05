@@ -13,7 +13,6 @@ interface AdminPanelProps {
   onReset: () => void;
   onCallNext: (loketId: string, npp: string) => void;
   onComplete: (loketId: string, serviceType: string, cardNumber?: string) => void;
-  onAssistantLog?: (npp: string, loketId: string, serviceType: string, cardNumber: string) => void;
   onUpdateUsers: (users: User[]) => void;
   onUpdateServiceTypes: (types: string[]) => void;
   onUpdateGasUrl: (url: string) => void;
@@ -58,7 +57,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   const [loginNpp, setLoginNpp] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'service' | 'users' | 'lokets' | 'history' | 'settings'>('service');
+  const [activeTab, setActiveTab] = useState<'service' | 'users' | 'lokets' | 'settings'>('service');
   
   const [selectedServices, setSelectedServices] = useState<{ [key: string]: string }>({});
   const [cardNumbers, setCardNumbers] = useState<{ [key: string]: string }>({});
@@ -74,7 +73,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
     if (user && loginPassword === '12345678') {
       setCurrentUser(user);
     } else { 
-      alert('NPP atau Password salah!'); 
+      alert('NPP atau Password salah! (Default: 12345678)'); 
     }
   };
 
@@ -107,21 +106,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   };
 
   const isSuper = currentUser?.role === 'SUPER_ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN' || isSuper;
 
   if (!currentUser) {
     return (
-      <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl text-center">
+      <div className="fixed inset-0 z-[150] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl text-center animate-in zoom-in duration-300">
           <div className="mb-6 flex justify-center">
-            <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black italic">SO</div>
+            <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black italic">D-SO</div>
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Akses Operasional</h2>
-          <p className="text-slate-500 text-sm mb-8 font-medium">Gunakan NPP untuk Masuk</p>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Login Petugas</h2>
+          <p className="text-slate-500 text-sm mb-8 font-medium italic">Silakan gunakan NPP untuk mengakses panel operasional.</p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="text" placeholder="Masukkan NPP" className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 transition-all font-bold" value={loginNpp} onChange={e => setLoginNpp(e.target.value)} required />
-            <input type="password" placeholder="Password" className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 transition-all font-bold" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required />
-            <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-colors uppercase tracking-widest text-xs">Login Panel</button>
-            <button type="button" onClick={onClose} className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 text-xs uppercase">Kembali ke Display</button>
+            <input 
+              type="text" 
+              placeholder="Masukkan NPP" 
+              className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 transition-all font-bold" 
+              value={loginNpp} 
+              onChange={e => setLoginNpp(e.target.value)} 
+              required 
+            />
+            <input 
+              type="password" 
+              placeholder="Password (12345678)" 
+              className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 transition-all font-bold" 
+              value={loginPassword} 
+              onChange={e => setLoginPassword(e.target.value)} 
+              required 
+            />
+            <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-colors uppercase tracking-widest text-xs">Masuk Panel</button>
+            <button type="button" onClick={onClose} className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 text-xs uppercase">Batal</button>
           </form>
         </div>
       </div>
@@ -129,25 +143,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[150] bg-slate-100 flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-500">
       <header className="bg-white px-8 py-4 shadow-sm flex items-center justify-between border-b border-slate-100">
         <div className="flex items-center space-x-4">
           <div className="bg-blue-600 p-2 rounded-xl text-white font-black px-3">D-SO</div>
           <div>
-            <h2 className="text-lg font-black text-slate-800 uppercase leading-tight tracking-tighter">Panel Petugas SO</h2>
+            <h2 className="text-lg font-black text-slate-800 uppercase leading-tight tracking-tighter">Panel Operasional Jember</h2>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{currentUser.name} | {currentUser.role}</p>
           </div>
         </div>
         <div className="flex items-center space-x-4">
           <nav className="bg-slate-100 p-1.5 rounded-2xl flex space-x-1">
-            <button onClick={() => setActiveTab('service')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'service' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Layanan</button>
-            {isSuper && <button onClick={() => setActiveTab('users')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Petugas</button>}
+            <button onClick={() => setActiveTab('service')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'service' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Monitor Layanan</button>
+            {isAdmin && <button onClick={() => setActiveTab('users')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Database Petugas</button>}
             {isSuper && <button onClick={() => setActiveTab('lokets')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'lokets' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Loket</button>}
-            {isSuper && <button onClick={() => setActiveTab('settings')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'settings' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Integrasi</button>}
+            {isSuper && <button onClick={() => setActiveTab('settings')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'settings' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Sistem</button>}
           </nav>
           <div className="h-8 w-px bg-slate-200 mx-2"></div>
-          <button onClick={() => setCurrentUser(null)} title="Logout" className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg></button>
-          <button onClick={onClose} title="Tutup Panel" className="p-3 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
+          <button onClick={() => setCurrentUser(null)} title="Logout" className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7" /></svg>
+          </button>
+          <button onClick={onClose} title="Tutup Panel" className="p-3 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
         </div>
       </header>
 
@@ -155,9 +173,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
         <div className="max-w-7xl mx-auto">
           {activeTab === 'service' && (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                 {lokets
-                  .filter(l => isSuper || l.id === currentUser.assignedLoketId)
+                  .filter(l => isAdmin || l.id === currentUser.assignedLoketId)
                   .map(loket => {
                     const currentQueue = queues.find(q => q.id === loket.currentQueueId);
                     const isCalling = !!currentQueue;
@@ -169,7 +187,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                     const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : loket.color === 'emerald' ? 'emerald' : 'blue';
                     
                     return (
-                      <div key={loket.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[500px]">
+                      <div key={loket.id} className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[500px] transition-all hover:border-blue-200">
                         <div className={`absolute top-0 left-0 w-full h-2 bg-${accentColor}-600`}></div>
                         
                         <div className="space-y-6">
@@ -177,12 +195,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                              <div className="flex-1 mr-4">
                                <h4 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{loket.name}</h4>
                                
-                               {isSuper ? (
-                                 <div className="mt-4 space-y-3">
+                               {isAdmin ? (
+                                 <div className="mt-4 space-y-3 animate-in fade-in duration-300">
                                    <div>
-                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Ganti Petugas (FL)</label>
+                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Pilih Petugas di Loket Ini</label>
                                      <select 
-                                       className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all"
+                                       className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all cursor-pointer"
                                        value={assignedUser?.npp || ''}
                                        onChange={(e) => handleAssignPetugas(loket.id, e.target.value)}
                                      >
@@ -194,14 +212,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                    </div>
                                    {assignedUser && (
                                      <div>
-                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipe Antrean (Role)</label>
+                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipe Antrean Petugas</label>
                                        <select 
-                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all"
+                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold py-2 px-3 outline-none focus:ring-1 ring-blue-500 transition-all cursor-pointer"
                                          value={assignedUser.role}
                                          onChange={(e) => handleUpdateUserRole(assignedUser.id, e.target.value as UserRole)}
                                        >
-                                         <option value="ADMIN">REGULER (A)</option>
-                                         <option value="ASISTEN_ADMIN">MJKN (MJKN)</option>
+                                         <option value="ADMIN">REGULER (Prefix A)</option>
+                                         <option value="ASISTEN_ADMIN">MJKN (Prefix MJKN)</option>
+                                         {isSuper && <option value="SUPER_ADMIN">SUPER ADMIN</option>}
                                        </select>
                                      </div>
                                    )}
@@ -209,57 +228,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                ) : (
                                  <div className="mt-2">
                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide italic">
-                                     Petugas: {assignedUser ? assignedUser.name : 'TIDAK TERDETEKSI'}
+                                     Nama Petugas: {assignedUser ? assignedUser.name : 'BELUM TERDAFTAR'}
                                    </p>
-                                   {/* Admin biasa bisa ganti role sendiri ke asisten jika diperlukan */}
-                                   <button 
-                                      onClick={() => handleUpdateUserRole(currentUser.id, currentUser.role === 'ADMIN' ? 'ASISTEN_ADMIN' : 'ADMIN')}
-                                      className="mt-1 text-[9px] font-black text-blue-600 uppercase hover:underline"
-                                   >
-                                      Ubah ke {currentUser.role === 'ADMIN' ? 'MJKN' : 'REGULER'}
-                                   </button>
                                  </div>
                                )}
                              </div>
-                             <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                               {isAssistant ? 'MJKN' : 'REGULER'}
+                             <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap shadow-sm ${isAssistant ? 'bg-amber-100 text-amber-600' : isCalling ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                               {isAssistant ? 'Layanan MJKN' : 'Layanan Reguler'}
                              </span>
                           </div>
 
                           <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Nomor Aktif</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Nomor Sedang Dilayani</span>
                             <span className={`text-6xl font-black tabular-nums tracking-tighter ${isCalling ? `text-${accentColor}-600` : 'text-slate-200'}`}>
                               {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '---'}
                             </span>
                           </div>
 
                           {isCalling && currentQueue && (
-                            <div className="space-y-4">
+                            <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
                                <div className="space-y-2">
-                                  <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Durasi Tunggu" />
-                                  <SLATimer startTime={currentQueue.startTime!} type="SERVICE" label="Durasi Layanan" />
+                                  <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Total Tunggu" />
+                                  <SLATimer startTime={currentQueue.startTime!} type="SERVICE" label="Lama Layanan" />
                                </div>
                                
                                <div className="space-y-3">
                                   <div>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nomor Kartu (13 Digit)</label>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nomor Kartu JKN (13 Digit)</label>
                                     <input 
                                       type="text" 
                                       maxLength={13}
-                                      placeholder="000XXXXXXXXXX"
+                                      placeholder="Contoh: 0001234567890"
                                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 mt-1"
                                       value={cardNumbers[loket.id] || ''}
                                       onChange={e => setCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))}
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Jenis Layanan</label>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Jenis Layanan Peserta</label>
                                     <select 
                                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 mt-1"
                                       value={selectedServices[loket.id] || ''}
                                       onChange={e => setSelectedServices(prev => ({ ...prev, [loket.id]: e.target.value }))}
                                     >
-                                      <option value="">-- Pilih Layanan --</option>
+                                      <option value="">-- Pilih Kategori --</option>
                                       {serviceTypes.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                   </div>
@@ -272,17 +284,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                           {isCalling ? (
                              <button 
                                onClick={() => handleCompleteWithData(loket.id)}
-                               className={`w-full py-5 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg hover:brightness-110 uppercase text-[10px] tracking-widest`}
+                               className={`w-full py-5 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg hover:brightness-110 uppercase text-[10px] tracking-widest transition-all active:scale-95`}
                              >
-                               Selesaikan Layanan
+                               Selesaikan Layanan Ini
                              </button>
                           ) : (
                              <button 
-                               disabled={waitingCount === 0} 
+                               disabled={waitingCount === 0 || (!isAdmin && !assignedUser)} 
                                onClick={() => onCallNext(loket.id, assignedUser?.npp || currentUser.npp)} 
-                               className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 uppercase text-[10px] tracking-widest hover:brightness-110`}
+                               className={`w-full py-6 bg-${accentColor}-600 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-30 disabled:grayscale uppercase text-[10px] tracking-widest hover:brightness-110`}
                              >
-                               PANGGIL {targetPrefix} ({waitingCount})
+                               PANGGIL {targetPrefix} ({waitingCount} antrean)
                              </button>
                           )}
                         </div>
@@ -293,41 +305,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
             </div>
           )}
 
-          {activeTab === 'users' && isSuper && (
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm">
+          {activeTab === 'users' && isAdmin && (
+            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm animate-in fade-in duration-500">
                <div className="flex justify-between items-center mb-8">
-                 <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Database Petugas</h3>
-                 <button onClick={() => setIsAddUserModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest">Tambah Petugas</button>
+                 <div>
+                   <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Daftar Petugas SO Jember</h3>
+                   <p className="text-slate-400 text-sm font-medium">Pengelolaan database dan penugasan loket.</p>
+                 </div>
+                 {isSuper && <button onClick={() => setIsAddUserModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-200">Tambah Petugas Baru</button>}
                </div>
-               <div className="overflow-x-auto">
+               <div className="overflow-x-auto rounded-3xl border border-slate-50">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
                       <tr>
-                        <th className="px-8 py-5">Nama Petugas</th>
+                        <th className="px-8 py-5">Nama Lengkap</th>
                         <th className="px-8 py-5">NPP</th>
-                        <th className="px-8 py-5">Loket Tugas</th>
-                        <th className="px-8 py-5">Peran</th>
+                        <th className="px-8 py-5">Penugasan Saat Ini</th>
+                        <th className="px-8 py-5">Otoritas</th>
                         <th className="px-8 py-5 text-right">Aksi</th>
                       </tr>
                     </thead>
-                    <tbody className="text-sm divide-y divide-slate-50">
+                    <tbody className="text-sm divide-y divide-slate-50 bg-white">
                       {users.map(u => (
-                        <tr key={u.id} className="hover:bg-slate-50/50">
+                        <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-8 py-5 font-black text-slate-800">{u.name}</td>
-                          <td className="px-8 py-5 font-mono font-bold text-slate-600">{u.npp}</td>
+                          <td className="px-8 py-5 font-mono font-bold text-slate-600 bg-slate-50/30">{u.npp}</td>
                           <td className="px-8 py-5">
-                             <select className="bg-white border rounded-lg text-xs font-bold py-1.5 px-3" value={u.assignedLoketId || ''} onChange={(e) => handleAssignPetugas(e.target.value, u.npp)}>
+                             <select 
+                               className="bg-white border rounded-lg text-[11px] font-black py-2 px-3 outline-none focus:ring-1 ring-blue-500" 
+                               value={u.assignedLoketId || ''} 
+                               onChange={(e) => handleAssignPetugas(e.target.value, u.npp)}
+                             >
                                <option value="">-- Standby --</option>
                                {lokets.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                              </select>
                           </td>
                           <td className="px-8 py-5">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${u.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-600' : u.role === 'ASISTEN_ADMIN' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm ${u.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-600' : u.role === 'ASISTEN_ADMIN' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
                               {u.role.replace('_', ' ')}
                             </span>
                           </td>
                           <td className="px-8 py-5 text-right">
-                             <button onClick={() => confirm('Hapus petugas ini?') && onUpdateUsers(users.filter(item => item.id !== u.id))} className="text-red-400 hover:text-red-600 font-bold text-[10px] uppercase">Hapus</button>
+                             {isSuper && u.id !== currentUser.id && (
+                               <button onClick={() => confirm('Hapus data petugas ini?') && onUpdateUsers(users.filter(item => item.id !== u.id))} className="text-red-400 hover:text-red-600 font-bold text-[10px] uppercase tracking-widest">Hapus</button>
+                             )}
                           </td>
                         </tr>
                       ))}
@@ -338,17 +359,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
           )}
 
           {activeTab === 'lokets' && isSuper && (
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm animate-in fade-in duration-500">
                <div className="flex justify-between items-center mb-8">
-                 <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Konfigurasi Loket</h3>
-                 <button onClick={() => setIsAddLoketModalOpen(true)} className="bg-purple-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest">Buka Loket Baru</button>
+                 <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Konfigurasi Counter Loket</h3>
+                 <button onClick={() => setIsAddLoketModalOpen(true)} className="bg-purple-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-purple-200">Tambah Loket Baru</button>
                </div>
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                  {lokets.map(l => (
-                   <div key={l.id} className="p-6 bg-slate-50 border border-slate-200 rounded-3xl flex flex-col items-center space-y-4">
-                     <div className={`w-12 h-1.5 rounded-full bg-${l.color === 'pink' ? 'pink' : l.color === 'purple' ? 'purple' : l.color === 'emerald' ? 'emerald' : 'blue'}-600`}></div>
-                     <span className="font-black text-slate-800 uppercase text-lg">{l.name}</span>
-                     <button onClick={() => confirm('Tutup loket ini?') && onUpdateLokets(lokets.filter(item => item.id !== l.id))} className="text-red-400 font-bold text-[10px] uppercase tracking-widest hover:text-red-600 transition-colors">Tutup Loket</button>
+                   <div key={l.id} className="p-8 bg-slate-50 border border-slate-200 rounded-[2rem] flex flex-col items-center space-y-4 hover:shadow-md transition-all">
+                     <div className={`w-12 h-2 rounded-full bg-${l.color === 'pink' ? 'pink' : l.color === 'purple' ? 'purple' : l.color === 'emerald' ? 'emerald' : 'blue'}-600`}></div>
+                     <span className="font-black text-slate-800 uppercase text-xl tracking-tighter">{l.name}</span>
+                     <button onClick={() => confirm('Hapus loket ini dari sistem?') && onUpdateLokets(lokets.filter(item => item.id !== l.id))} className="text-red-400 font-bold text-[10px] uppercase tracking-widest hover:text-red-600 pt-2">Hapus Loket</button>
                    </div>
                  ))}
                </div>
@@ -356,20 +377,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
           )}
 
           {activeTab === 'settings' && isSuper && (
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm space-y-8">
-              <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Integrasi Database Cloud</h3>
-              <div className="grid grid-cols-1 gap-6">
+            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm space-y-8 animate-in fade-in duration-500">
+              <h3 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">Integrasi Sistem Cloud</h3>
+              <div className="grid grid-cols-1 gap-8">
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">GAS Deployment URL (Spreadsheet Sync)</label>
-                  <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-mono text-sm mt-2" value={gasUrl} onChange={e => onUpdateGasUrl(e.target.value)} />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">GAS Deployment URL (Backend Master)</label>
+                  <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-mono text-xs mt-2 outline-none focus:ring-2 ring-blue-500" value={gasUrl} onChange={e => onUpdateGasUrl(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Spreadsheet Dashboard URL</label>
-                  <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-mono text-sm mt-2" value={spreadsheetUrl} onChange={e => onUpdateSpreadsheetUrl(e.target.value)} />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Link Google Spreadsheet (Monitoring)</label>
+                  <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-mono text-xs mt-2 outline-none focus:ring-2 ring-blue-500" value={spreadsheetUrl} onChange={e => onUpdateSpreadsheetUrl(e.target.value)} />
                 </div>
-                <div className="pt-4 flex space-x-4">
-                   <button onClick={onReset} className="px-8 py-4 bg-red-100 text-red-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-red-200 transition-all">Reset Semua Antrean Hari Ini</button>
-                   <a href={spreadsheetUrl} target="_blank" rel="noreferrer" className="px-8 py-4 bg-emerald-100 text-emerald-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-emerald-200 transition-all">Buka Dashboard Spreadsheet</a>
+                <div className="pt-4 flex flex-wrap gap-4">
+                   <button onClick={onReset} className="px-8 py-4 bg-red-100 text-red-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-red-200 transition-all shadow-lg shadow-red-50">Reset Antrean Hari Ini</button>
+                   <a href={spreadsheetUrl} target="_blank" rel="noreferrer" className="px-8 py-4 bg-emerald-100 text-emerald-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-emerald-200 transition-all shadow-lg shadow-emerald-50">Lihat Dashboard Utama</a>
                 </div>
               </div>
             </div>
@@ -377,26 +398,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
         </div>
       </main>
 
-      {/* Modals */}
+      {/* Modals for Management */}
       {isAddUserModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl">
-            <h3 className="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter">Tambah Nama FL</h3>
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl animate-in zoom-in duration-300">
+            <h3 className="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter">Tambah Petugas Baru</h3>
             <div className="space-y-4">
               <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" placeholder="Nama Lengkap" onChange={e => setNewUser({...newUser, name: e.target.value})} />
               <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" placeholder="NPP Petugas" onChange={e => setNewUser({...newUser, npp: e.target.value})} />
               <select className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}>
-                <option value="ADMIN">ADMIN (REGULER)</option>
+                <option value="ADMIN">ADMIN (Reguler)</option>
                 <option value="ASISTEN_ADMIN">ASISTEN (MJKN)</option>
                 <option value="SUPER_ADMIN">SUPER ADMIN</option>
               </select>
               <div className="flex space-x-3 pt-6">
                 <button onClick={() => setIsAddUserModalOpen(false)} className="flex-1 py-4 text-slate-400 font-bold text-xs uppercase">Batal</button>
                 <button onClick={() => { 
-                  if(!newUser.name || !newUser.npp) return alert('Lengkapi data!');
+                  if(!newUser.name || !newUser.npp) return alert('Data belum lengkap!');
                   onUpdateUsers([...users, { ...newUser, id: Date.now().toString(), email: `${newUser.npp}@bpjs-kesehatan.go.id` } as User]); 
                   setIsAddUserModalOpen(false); 
-                }} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-200">Simpan Petugas</button>
+                }} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-xl shadow-blue-100">Simpan Petugas</button>
               </div>
             </div>
           </div>
@@ -404,24 +425,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
       )}
 
       {isAddLoketModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl">
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl animate-in zoom-in duration-300">
             <h3 className="text-2xl font-black text-slate-800 mb-6 uppercase tracking-tighter">Buka Loket Baru</h3>
             <div className="space-y-4">
               <input type="text" className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" placeholder="Contoh: LOKET 5" onChange={e => setNewLoket({...newLoket, name: e.target.value})} />
               <select className="w-full px-5 py-4 bg-slate-50 border rounded-xl font-bold text-sm" onChange={e => setNewLoket({...newLoket, color: e.target.value})}>
-                <option value="blue">Biru (Utama)</option>
-                <option value="pink">Pink (Prioritas)</option>
-                <option value="purple">Ungu (Khusus)</option>
-                <option value="emerald">Hijau (Tambahan)</option>
+                <option value="blue">Biru (Warna Utama)</option>
+                <option value="pink">Pink (Warna Prioritas)</option>
+                <option value="purple">Ungu (Warna Khusus)</option>
+                <option value="emerald">Hijau (Warna Tambahan)</option>
               </select>
               <div className="flex space-x-3 pt-6">
                 <button onClick={() => setIsAddLoketModalOpen(false)} className="flex-1 py-4 text-slate-400 font-bold text-xs uppercase">Batal</button>
                 <button onClick={() => { 
-                  if(!newLoket.name) return alert('Lengkapi nama loket!');
+                  if(!newLoket.name) return alert('Nama loket wajib diisi!');
                   onUpdateLokets([...lokets, { ...newLoket, id: `loket-${Date.now()}` } as Loket]); 
                   setIsAddLoketModalOpen(false); 
-                }} className="flex-1 py-4 bg-purple-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-purple-200">Aktifkan Loket</button>
+                }} className="flex-1 py-4 bg-purple-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-xl shadow-purple-100">Aktifkan Loket</button>
               </div>
             </div>
           </div>
