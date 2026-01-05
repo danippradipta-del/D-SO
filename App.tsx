@@ -8,7 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_so_shared_v14';
+const STORAGE_KEY = 'bpjs_jember_so_v15_final';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_NAME = 'NEWRekap';
 
@@ -17,10 +17,7 @@ const DEFAULT_USERS: User[] = [
   { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
   { id: 'u3', name: 'Laili', npp: '111111', email: 'laili@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-3' },
   { id: 'u4', name: 'Pundi', npp: '22222', email: 'pundi@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
-  { id: 'u5', name: 'Fahri Wardiansah', npp: '250137', email: '250137.fahri@bpjs-kesehatan.go.id', role: 'ADMIN' },
-  { id: 'u6', name: "Vina Nihayatus Sa'adah", npp: '05315', email: 'vina.nihayatus@bpjs-kesehatan.go.id', role: 'ADMIN' },
   { id: 'u7', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
-  { id: 'u8', name: 'Ririt Eka Agustania', npp: '04586', email: 'ririt.eka@bpjs-kesehatan.go.id', role: 'ADMIN' },
 ];
 
 const DEFAULT_LOKETS: Loket[] = [
@@ -48,9 +45,10 @@ const DEFAULT_SERVICE_TYPES = [
   "Tidak bisa dilayani di SO"
 ];
 
+// Helper: Mendapatkan tanggal hari ini dalam format YYYY-MM-DD
 const getLocalDate = () => {
   const d = new Date();
-  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+  return d.toISOString().split('T')[0];
 };
 
 const getVal = (row: any, ...keys: string[]) => {
@@ -74,6 +72,7 @@ const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
   if (!nomerRaw || nomerRaw === "" || nomerRaw.toLowerCase() === "nomor antrean") return null;
 
   const rawStatus = (getVal(row, "Status Pengerjaan", "status") || "").toString().trim().toUpperCase();
+  const rowDate = (getVal(row, "Tanggal") || "").toString().trim();
   
   let prefix = "A";
   if (nomerRaw.toUpperCase().startsWith("MJKN")) {
@@ -92,16 +91,15 @@ const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
     status = QueueStatus.COMPLETED;
   }
 
-  const dateStr = getLocalDate();
   const timeStr = getVal(row, "Waktu Ambil", "waktu", "jam") || "00:00:00";
-  let timestamp = new Date(`${dateStr}T${timeStr}`).getTime();
+  let timestamp = new Date(`${rowDate}T${timeStr}`).getTime();
   if (isNaN(timestamp)) timestamp = Date.now() - (1000000 - index);
 
   const loketRaw = getVal(row, "Loket") || "";
   const loketId = loketRaw ? `loket-${loketRaw.toString().replace(/[^0-9]/g, '')}` : undefined;
 
   return {
-    id: `q-${nomerRaw}-${dateStr}-${index}`,
+    id: `q-${nomerRaw}-${rowDate}-${index}`,
     number,
     prefix,
     rawNumber: nomerRaw, 
@@ -150,6 +148,7 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const isSyncingRef = useRef(false);
 
+  // Fetch data terbaru dari Cloud
   const fetchFreshData = async () => {
     if (!state.gasUrl) return null;
     try {
@@ -163,7 +162,7 @@ const App: React.FC = () => {
           .filter((q: any): q is QueueItem => q !== null);
       }
     } catch (e) {
-      console.error("Sync Error:", e);
+      console.error("Cloud Error:", e);
     }
     return null;
   };
@@ -174,15 +173,24 @@ const App: React.FC = () => {
     setSyncStatus('syncing');
     
     const freshQueues = await fetchFreshData();
+    const today = getLocalDate();
+
     if (freshQueues) {
-      const maxRegular = Math.max(0, ...freshQueues.filter(q => q.prefix === 'A').map(q => q.number));
-      const maxMjkn = Math.max(0, ...freshQueues.filter(q => q.prefix === 'MJKN').map(q => q.number));
+      // Hanya hitung nomor berikutnya dari data HARI INI
+      const todayQueues = freshQueues.filter(q => {
+        const qDate = new Date(q.timestamp).toISOString().split('T')[0];
+        return qDate === today;
+      });
+
+      const maxRegular = Math.max(0, ...todayQueues.filter(q => q.prefix === 'A').map(q => q.number));
+      const maxMjkn = Math.max(0, ...todayQueues.filter(q => q.prefix === 'MJKN').map(q => q.number));
 
       setState(prev => ({
         ...prev,
         queues: freshQueues,
         nextNumber: maxRegular + 1,
-        nextMjknNumber: maxMjkn + 1
+        nextMjknNumber: maxMjkn + 1,
+        lastDate: today
       }));
       setSyncStatus('success');
       setLastSyncTime(new Date().toLocaleTimeString());
@@ -204,7 +212,6 @@ const App: React.FC = () => {
         body: JSON.stringify({ ...payload, sheet: TARGET_SHEET_NAME })
       });
       setSyncStatus('success');
-      // Sync immediately after update
       setTimeout(() => syncStateWithCloud(true), 1500);
     } catch (e) {
       setSyncStatus('error');
@@ -217,25 +224,30 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [syncStateWithCloud]);
 
+  // LOGIKA AMBIL ANTREAN: RESET HARIAN TERJAMIN
   const handleTakeQueue = useCallback(async (type: 'REGULAR' | 'MJKN') => {
     setSyncStatus('syncing');
     
-    // Blocking check to get the ABSOLUTE latest number from the cloud
     const freshQueues = await fetchFreshData();
     const referenceQueues = freshQueues || state.queues;
+    const today = getLocalDate();
     
     const prefix = type === 'MJKN' ? 'MJKN' : 'A';
     
-    // Find absolute highest number from the data
-    const currentMax = Math.max(0, ...referenceQueues.filter(q => q.prefix === prefix).map(q => q.number));
+    // Filter data HARI INI saja untuk menentukan nomor urut
+    const todayQueues = referenceQueues.filter(q => {
+      const qDate = new Date(q.timestamp).toISOString().split('T')[0];
+      return qDate === today && q.prefix === prefix;
+    });
+
+    const currentMax = Math.max(0, ...todayQueues.map(q => q.number));
     const nextNum = currentMax + 1;
     const formattedNo = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
     
     const timestamp = Date.now();
-    const dateStr = getLocalDate();
     
     const newTicket: QueueItem = {
-      id: `q-${formattedNo}-${dateStr}-${timestamp}`,
+      id: `q-${formattedNo}-${today}-${timestamp}`,
       number: nextNum,
       prefix,
       rawNumber: formattedNo,
@@ -245,39 +257,37 @@ const App: React.FC = () => {
 
     setLastGeneratedTicket(newTicket);
     
-    // Optimistic local update
-    setState(prev => ({
-      ...prev,
-      queues: [...prev.queues, newTicket],
-      nextNumber: prefix === 'A' ? nextNum + 1 : prev.nextNumber,
-      nextMjknNumber: prefix === 'MJKN' ? nextNum + 1 : prev.nextMjknNumber
-    }));
-
     await pushToCloud({
       action: 'ADD',
       "Nomor Antrean": formattedNo,
       "Status Pengerjaan": "Menunggu",
-      "Tanggal": dateStr,
+      "Tanggal": today,
       "Waktu Ambil": getTimeString(timestamp)
     });
   }, [state.queues, state.gasUrl]);
 
+  // LOGIKA PANGGIL: SINKRONISASI TOTAL 1-4 LOKET
   const handleCallNext = useCallback(async (loketId: string, npp: string) => {
     setSyncStatus('syncing');
     
     const freshQueues = await fetchFreshData();
     const referenceQueues = freshQueues || state.queues;
+    const today = getLocalDate();
+    
     const user = state.users.find(u => u.npp === npp);
     
-    // Loket 1-4 all use the same unified waiting pool
+    // Ambil antrean menunggu hari ini yang belum diproses siapapun
     const waitingQueues = referenceQueues
-      .filter(q => q.status === QueueStatus.WAITING)
+      .filter(q => {
+        const qDate = new Date(q.timestamp).toISOString().split('T')[0];
+        return qDate === today && q.status === QueueStatus.WAITING;
+      })
       .sort((a, b) => a.timestamp - b.timestamp);
 
     const nextInLine = waitingQueues[0];
 
     if (!nextInLine) {
-      alert("Antrean kosong. Menunggu peserta baru.");
+      alert("Antrean hari ini sudah habis. Silakan tunggu peserta baru.");
       syncStateWithCloud(true);
       return;
     }
@@ -292,7 +302,8 @@ const App: React.FC = () => {
       "Waktu Panggil": getTimeString(startTime),
       "Loket": loketNum,
       "Nama FL (Petugas)": user?.name || npp,
-      "handledByNpp": npp
+      "handledByNpp": npp,
+      "Tanggal": today // Pastikan update dilakukan pada baris tanggal yang sama
     });
   }, [state.queues, state.users, state.gasUrl, syncStateWithCloud]);
 
@@ -301,6 +312,7 @@ const App: React.FC = () => {
     const queueItem = state.queues.find(q => q.id === currentLoket?.currentQueueId);
     if (!queueItem) return;
 
+    const today = getLocalDate();
     const endTime = Date.now();
     const waitMs = queueItem.startTime ? (queueItem.startTime - queueItem.timestamp) : 0;
     const serviceMs = (endTime - (queueItem.startTime || endTime));
@@ -313,7 +325,8 @@ const App: React.FC = () => {
       "Jenis Layanan": serviceType,
       "Waktu Tunggu": formatDuration(waitMs),
       "Waktu Layanan": formatDuration(serviceMs),
-      "Noka": cardNumber || ''
+      "Noka": cardNumber || '',
+      "Tanggal": today
     });
   }, [state.lokets, state.queues, state.gasUrl]);
 
@@ -321,8 +334,8 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Sinkronisasi Database...</h2>
-        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Validasi nomor antrean harian</p>
+        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Memvalidasi Hari...</h2>
+        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">BPJS Kesehatan Jember - DSO System</p>
       </div>
     );
   }
@@ -340,10 +353,10 @@ const App: React.FC = () => {
           <div className="flex items-center space-x-2">
             <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
             <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-              {syncStatus === 'syncing' ? 'Updating...' : 'Sistem Aktif'}
+              {syncStatus === 'syncing' ? 'Menghubungkan...' : 'Terhubung'}
             </span>
           </div>
-          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Sync: {lastSyncTime}</span>
+          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Cloud Sync: {lastSyncTime}</span>
         </button>
       </div>
 
@@ -356,18 +369,19 @@ const App: React.FC = () => {
             lokets={state.lokets} 
             queues={state.queues} 
             users={state.users} 
-            nextQueue={state.queues.filter(q => q.status === QueueStatus.WAITING).sort((a,b) => a.timestamp - b.timestamp)[0]}
+            nextQueue={state.queues.filter(q => q.status === QueueStatus.WAITING && new Date(q.timestamp).toISOString().split('T')[0] === getLocalDate()).sort((a,b) => a.timestamp - b.timestamp)[0]}
           />
 
-          <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING).length} />
+          <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING && new Date(q.timestamp).toISOString().split('T')[0] === getLocalDate()).length} />
           
           <div className="flex flex-col items-center space-y-6">
              <button onClick={() => setIsAdminOpen(true)} className="group flex items-center space-x-3 text-slate-500 hover:text-blue-600 transition-all bg-white px-8 py-3 rounded-full shadow-md border border-slate-100 hover:shadow-xl hover:-translate-y-1">
                 <div className="bg-slate-100 group-hover:bg-blue-100 p-2 rounded-full transition-colors">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" /></svg>
                 </div>
-                <span className="text-xs font-black uppercase tracking-[0.2em]">Panel Operasional Petugas</span>
+                <span className="text-xs font-black uppercase tracking-[0.2em]">Otoritas Petugas Jember</span>
              </button>
+             <p className="text-[9px] text-slate-300 font-bold uppercase tracking-[0.4em]">Sistem Restart Otomatis Setiap Jam 00:00</p>
           </div>
         </div>
       </div>
@@ -376,7 +390,7 @@ const App: React.FC = () => {
         <AdminPanel 
           lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
           gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { if(confirm('⚠️ Reset Harian?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
+          onReset={() => { if(confirm('⚠️ Reset Harian: Data hari ini akan diarsipkan.')) syncStateWithCloud(true); }}
           onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
