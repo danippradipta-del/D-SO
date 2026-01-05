@@ -10,61 +10,52 @@ interface LoketSectionProps {
 }
 
 const LoketSection: React.FC<LoketSectionProps> = ({ lokets, queues, users, nextQueue }) => {
+  const getTheme = (color: string) => {
+    const themes: {[key: string]: string} = {
+      blue: 'bg-blue-50 text-blue-600 border-blue-100 icon-blue-600',
+      pink: 'bg-pink-50 text-pink-600 border-pink-100 icon-pink-600',
+      purple: 'bg-purple-50 text-purple-600 border-purple-100 icon-purple-600',
+      emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100 icon-emerald-600',
+      amber: 'bg-amber-50 text-amber-600 border-amber-100 icon-amber-600',
+      indigo: 'bg-indigo-50 text-indigo-600 border-indigo-100 icon-indigo-600',
+    };
+    return themes[color] || themes.blue;
+  };
+
   return (
-    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full`}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 w-full">
       {lokets.map((loket) => {
         const currentQueue = queues.find(q => q.id === loket.currentQueueId);
         const assignedUser = users.find(u => u.assignedLoketId === loket.id);
-        const isAssistant = assignedUser?.role === 'ASISTEN_ADMIN';
-
-        const colorClass = loket.color === 'blue' ? 'text-blue-600 bg-blue-100' : 
-                         loket.color === 'pink' ? 'text-pink-600 bg-pink-100' :
-                         loket.color === 'purple' ? 'text-purple-600 bg-purple-100' :
-                         loket.color === 'emerald' ? 'text-emerald-600 bg-emerald-100' :
-                         'text-slate-600 bg-slate-100';
-
-        const barColor = loket.color === 'blue' ? 'bg-blue-600' : 
-                        loket.color === 'pink' ? 'bg-pink-600' :
-                        loket.color === 'purple' ? 'bg-purple-600' :
-                        loket.color === 'emerald' ? 'bg-emerald-600' :
-                        'bg-slate-600';
+        const theme = getTheme(loket.color);
 
         return (
-          <div key={loket.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center space-y-4 hover:shadow-md transition-shadow duration-300">
-            <div className={`p-3 rounded-2xl ${colorClass}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
+          <div key={loket.id} className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100 flex flex-col items-center space-y-6 hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 group">
+            <div className={`w-16 h-16 rounded-3xl flex items-center justify-center ${theme.split(' ')[0]} group-hover:scale-110 transition-transform`}>
+              <svg className={`w-8 h-8 ${theme.split(' ')[1]}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
             </div>
             <div className="text-center">
-              <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">{loket.name}</p>
-              <p className="text-4xl font-black text-slate-800 mt-1">
-                {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '-'}
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">{loket.name}</h4>
+              <p className="text-6xl font-black text-slate-800 tracking-tighter">
+                {currentQueue ? currentQueue.rawNumber : '---'}
               </p>
-              {isAssistant && (
-                <div className="mt-2 px-3 py-0.5 bg-emerald-50 rounded-lg border border-emerald-100">
-                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Petugas Aktif</span>
-                </div>
-              )}
+              <div className="mt-4 px-4 py-1.5 bg-slate-50 rounded-full border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest truncate max-w-[120px] inline-block">
+                  {assignedUser?.name || 'BELUM AKTIF'}
+                </span>
+              </div>
             </div>
-            <div className={`h-1.5 w-12 rounded-full ${barColor} opacity-50`}></div>
           </div>
         );
       })}
 
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center space-y-4 hover:shadow-md transition-shadow duration-300">
-        <div className="p-3 rounded-2xl text-cyan-600 bg-cyan-100">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </div>
-        <div className="text-center">
-          <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">ANTREAN BERIKUTNYA</p>
-          <p className="text-4xl font-black text-slate-800 mt-1">
-            {nextQueue ? `${nextQueue.prefix}-${nextQueue.number.toString().padStart(3, '0')}` : '-'}
-          </p>
-        </div>
-        <div className="h-1.5 w-12 rounded-full bg-cyan-500 opacity-50"></div>
+      <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-[2.5rem] p-10 shadow-xl flex flex-col items-center justify-center space-y-4 text-white min-h-[250px]">
+        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Antrean Berikutnya</span>
+        <p className="text-6xl font-black tracking-tighter text-blue-400">
+          {nextQueue ? nextQueue.rawNumber : '---'}
+        </p>
+        <div className="h-0.5 w-10 bg-slate-700 rounded-full"></div>
+        <span className="text-[9px] font-bold text-slate-500 uppercase">Silakan Bersiap</span>
       </div>
     </div>
   );

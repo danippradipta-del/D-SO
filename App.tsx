@@ -8,396 +8,307 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_so_v17_fix';
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
-const TARGET_SHEET_NAME = 'NEWRekap';
+// Updated storage key to force reset settings and use the new URL
+const STORAGE_KEY = 'jember_so_v8_atomic';
+// New GAS URL provided by the user
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbw0JTSvVkYgq-pw3lN6Fo0VOKNvWrJZNRAuRMC92cKpNxPpszWbWyM59mqkq0Y-dcHqXw/exec';
 
-const DEFAULT_USERS: User[] = [
-  { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
-  { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
-  { id: 'u3', name: 'Laili', npp: '111111', email: 'laili@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-3' },
-  { id: 'u4', name: 'Pundi', npp: '22222', email: 'pundi@gmail.com', role: 'ASISTEN_ADMIN', assignedLoketId: 'loket-4' },
-  { id: 'u7', name: 'nur syamsia octavia', npp: '08193', email: 'nur.syamsia@bpjs-kesehatan.go.id', role: 'SUPER_ADMIN' },
-];
-
-const DEFAULT_LOKETS: Loket[] = [
-  { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
-  { id: 'loket-2', name: 'LOKET 2', color: 'pink' },
-  { id: 'loket-3', name: 'LOKET 3', color: 'purple' },
-  { id: 'loket-4', name: 'LOKET 4', color: 'emerald' },
-];
-
-const DEFAULT_SERVICE_TYPES = [
-  "Pindah faskes melalui pandawa/mjkn",
-  "Peralihan segmen ke PBPU dengan 14 hari melalui pandawa/mjkn",
-  "Perubahan identitas/alamat melalui pandawa/mjkn",
-  "Update surat keterangan kuliah melalui pandawa",
-  "Penambahan anggota keluarga PPU melalui pandawa",
-  "Pendaftaran baru/anggota keluarga PBPU pandawa/mjkn",
-  "Perubahan administrasi lainnya",
-  "Permintaan informasi lainnya",
-  "Penonaktifan meninggal dunia",
-  "Registrasi aplikasi MJKN",
-  "Pendaftaran/perubahan autodebet",
-  "Daftar BBL melalui pandawa",
-  "Update virtual account pembayaran",
-  "Pendaftaran program rehab",
-  "Tidak bisa dilayani di SO"
-];
-
-const getLocalDate = () => {
-  const d = new Date();
-  return d.toISOString().split('T')[0];
+const getJemberDate = () => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()).split('-').reverse().join('/');
 };
-
-const getVal = (row: any, ...keys: string[]) => {
-  if (!row) return null;
-  const rowKeys = Object.keys(row);
-  for (const k of keys) {
-    const target = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const found = rowKeys.find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, '') === target);
-    if (found) return row[found];
-  }
-  return null;
-};
-
-const extractNumberFromRaw = (raw: string): number => {
-  if (!raw) return 0;
-  const match = raw.match(/\d+$/);
-  return match ? parseInt(match[0]) : 0;
-};
-
-const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
-  const nomerRaw = (getVal(row, "Nomor Antrean", "noantrean", "nomer") || "").toString().trim();
-  if (!nomerRaw || nomerRaw === "" || nomerRaw.toLowerCase() === "nomor antrean") return null;
-
-  const rawStatus = (getVal(row, "Status Pengerjaan", "status") || "").toString().trim().toUpperCase();
-  const rowDate = (getVal(row, "Tanggal") || "").toString().trim();
-  
-  let prefix = "A";
-  if (nomerRaw.toUpperCase().startsWith("MJKN")) {
-    prefix = "MJKN";
-  } else {
-    const match = nomerRaw.match(/^[a-zA-Z]+/);
-    prefix = match ? match[0].toUpperCase() : "A";
-  }
-  
-  const number = extractNumberFromRaw(nomerRaw);
-  
-  let status: QueueStatus = QueueStatus.WAITING;
-  if (rawStatus.includes('DILAYANI') || rawStatus.includes('CALL') || rawStatus.includes('PANGGIL')) {
-    status = QueueStatus.CALLING;
-  } else if (rawStatus.includes('SELESAI') || rawStatus.includes('COMPLET') || rawStatus.includes('DONE')) {
-    status = QueueStatus.COMPLETED;
-  }
-
-  const timeStr = getVal(row, "Waktu Ambil", "waktu", "jam") || "00:00:00";
-  let timestamp = new Date(`${rowDate}T${timeStr}`).getTime();
-  if (isNaN(timestamp)) timestamp = Date.now() - (1000000 - index);
-
-  const loketRaw = getVal(row, "Loket") || "";
-  const loketId = loketRaw ? `loket-${loketRaw.toString().replace(/[^0-9]/g, '')}` : undefined;
-
-  return {
-    id: `q-${nomerRaw}-${rowDate}-${index}`,
-    number,
-    prefix,
-    rawNumber: nomerRaw, 
-    status,
-    timestamp,
-    loketId,
-    serviceType: getVal(row, "Jenis Layanan", "layanan"),
-    handledByNpp: getVal(row, "handledByNpp", "NPP Petugas"),
-    cardNumber: getVal(row, "Noka", "Nomor Kartu"),
-    startTime: status === QueueStatus.CALLING ? timestamp : undefined
-  };
-};
-
-const getTimeString = (ts: number) => new Date(ts).toTimeString().split(' ')[0];
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
-    const today = getLocalDate();
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
     return {
-      users: parsed?.users || DEFAULT_USERS,
-      lokets: parsed?.lokets || DEFAULT_LOKETS,
-      serviceTypes: parsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
+      users: parsed?.users || [
+        { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', role: 'ADMIN', assignedLoketId: 'loket-1' },
+        { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', role: 'ADMIN', assignedLoketId: 'loket-2' },
+        { id: 'u3', name: 'nur syamsia octavia', npp: '08193', role: 'SUPER_ADMIN', assignedLoketId: 'loket-3' },
+      ],
+      lokets: parsed?.lokets || [
+        { id: 'loket-1', name: 'LOKET 1', color: 'blue' },
+        { id: 'loket-2', name: 'LOKET 2', color: 'pink' },
+        { id: 'loket-3', name: 'LOKET 3', color: 'purple' },
+      ],
+      serviceTypes: parsed?.serviceTypes || [
+        "Pindah faskes melalui pandawa/mjkn", "Peralihan segmen PBPU", "Perubahan identitas/alamat",
+        "Registrasi aplikasi MJKN", "Penonaktifan meninggal dunia", "Permintaan informasi lainnya"
+      ],
       gasUrl: parsed?.gasUrl || DEFAULT_GAS_URL,
-      spreadsheetUrl: parsed?.spreadsheetUrl || '',
       queues: [],
-      assistantRecords: [],
-      nextNumber: 1,
-      nextMjknNumber: 1,
-      lastDate: today,
     };
   });
 
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'success'>('idle');
-  const [lastSyncTime, setLastSyncTime] = useState<string>('Never');
-  const [isInitializing, setIsInitializing] = useState(true);
-  const isSyncingRef = useRef(false);
+  const [syncStatus, setSyncStatus] = useState<'syncing' | 'error' | 'success'>('success');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const syncInProgress = useRef(false);
 
-  const fetchFreshData = async () => {
-    if (!state.gasUrl) return null;
+  const fetchLatestQueues = useCallback(async () => {
     try {
-      const url = `${state.gasUrl}?action=getState&sheet=${TARGET_SHEET_NAME}&_=${Date.now()}`;
-      const response = await fetch(url);
-      if (!response.ok) return null;
-      const cloudData = await response.json();
-      if (cloudData && Array.isArray(cloudData.queues)) {
-        return cloudData.queues
-          .map((row: any, idx: number) => mapCloudRowToQueueItem(row, idx))
-          .filter((q: any): q is QueueItem => q !== null);
+      const cacheBuster = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      const resp = await fetch(`${state.gasUrl}?action=getState&_cb=${cacheBuster}`);
+      const data = await resp.json();
+      if (data?.queues) {
+        return data.queues.map((row: any, i: number) => {
+          const rawNo = (row["Nomor Antrean"] || "").toString();
+          const rawStatus = (row["Status Pengerjaan"] || "Menunggu").toUpperCase();
+          let status: QueueStatus = QueueStatus.WAITING;
+          if (rawStatus.includes("DILAYANI")) status = QueueStatus.CALLING;
+          if (rawStatus.includes("SELESAI")) status = QueueStatus.COMPLETED;
+
+          return {
+            id: `q-${rawNo}-${row["Tanggal"]}-${i}`,
+            number: parseInt(rawNo.split('-').pop()) || 0,
+            prefix: rawNo.includes("MJKN") ? "MJKN" : "A",
+            rawNumber: rawNo,
+            status,
+            timestamp: new Date(`${row["Tanggal"].split('/').reverse().join('-')}T${row["Waktu Ambil"] || "00:00:00"}`).getTime(),
+            loketId: row["Loket"] ? `loket-${row["Loket"]}` : undefined,
+            serviceType: row["Jenis Layanan"],
+          } as QueueItem;
+        }).filter((q: any) => q.rawNumber);
       }
-    } catch (e) {
-      console.error("Cloud Error:", e);
-    }
-    return null;
-  };
-
-  const syncStateWithCloud = useCallback(async (force = false) => {
-    if (isSyncingRef.current && !force) return;
-    isSyncingRef.current = true;
-    setSyncStatus('syncing');
-    
-    const freshQueues = await fetchFreshData();
-    const today = getLocalDate();
-
-    if (freshQueues) {
-      const todayQueues = freshQueues.filter(q => {
-        const qDate = new Date(q.timestamp).toISOString().split('T')[0];
-        return qDate === today;
-      });
-
-      const maxRegular = Math.max(0, ...todayQueues.filter(q => q.prefix === 'A').map(q => q.number));
-      const maxMjkn = Math.max(0, ...todayQueues.filter(q => q.prefix === 'MJKN').map(q => q.number));
-
-      const updatedLokets = state.lokets.map(l => {
-        const activeQueue = todayQueues.find(q => 
-          q.status === QueueStatus.CALLING && q.loketId === l.id
-        );
-        return { ...l, currentQueueId: activeQueue?.id };
-      });
-
-      setState(prev => ({
-        ...prev,
-        queues: freshQueues,
-        lokets: updatedLokets,
-        nextNumber: maxRegular + 1,
-        nextMjknNumber: maxMjkn + 1,
-        lastDate: today
-      }));
-      setSyncStatus('success');
-      setLastSyncTime(new Date().toLocaleTimeString());
-      setTimeout(() => setSyncStatus('idle'), 1000);
-    } else {
+    } catch (e) { 
+      console.error("Sync Error:", e);
       setSyncStatus('error');
     }
-    isSyncingRef.current = false;
-    setIsInitializing(false);
-  }, [state.gasUrl, state.lokets]);
+    return null;
+  }, [state.gasUrl]);
 
-  const pushToCloud = async (payload: any) => {
-    if (!state.gasUrl) return;
+  const sync = useCallback(async (manual = false) => {
+    if (syncInProgress.current && !manual) return;
+    syncInProgress.current = true;
+    if (manual) setSyncStatus('syncing');
+
+    const fresh = await fetchLatestQueues();
+    if (fresh) {
+      const today = getJemberDate();
+      setState(prev => {
+        const updatedLokets = prev.lokets.map(l => {
+          const active = fresh.find(q => q.status === QueueStatus.CALLING && q.loketId === l.id && new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jakarta'}).format(new Date(q.timestamp)).split('-').reverse().join('/') === today);
+          return { ...l, currentQueueId: active?.id };
+        });
+        const newState = { ...prev, queues: fresh, lokets: updatedLokets };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+        return newState;
+      });
+      setSyncStatus('success');
+    }
+    syncInProgress.current = false;
+    setIsLoading(false);
+  }, [fetchLatestQueues]);
+
+  useEffect(() => {
+    sync();
+    const inv = setInterval(() => sync(), 5000);
+    return () => clearInterval(inv);
+  }, [sync]);
+
+  const handleTakeQueue = async (type: 'REGULAR' | 'MJKN') => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    setSyncStatus('syncing');
+
+    try {
+      const today = getJemberDate();
+      const prefix = type === 'MJKN' ? 'MJKN' : 'A';
+      const now = new Date();
+
+      // KIRIM KE SERVER TANPA MENGHITUNG NOMOR DI CLIENT
+      const response = await fetch(state.gasUrl, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'ADD',
+          "Prefix": prefix,
+          "Tanggal": today,
+          "Waktu Ambil": now.toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' })
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.number) {
+        const newTicket: QueueItem = {
+          id: `confirmed-${Date.now()}`,
+          number: parseInt(result.number.split('-').pop()),
+          prefix,
+          rawNumber: result.number,
+          status: QueueStatus.WAITING,
+          timestamp: now.getTime()
+        };
+
+        setLastGeneratedTicket(newTicket);
+        await sync(true);
+      } else {
+        throw new Error("Gagal mendapatkan nomor dari server.");
+      }
+    } catch (error) {
+      console.error("Take Queue Error:", error);
+      alert("Sistem sedang sibuk atau URL script salah. Silakan periksa kembali.");
+      setSyncStatus('error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCallNext = async (loketId: string, npp: string) => {
+    const today = getJemberDate();
+    const waiting = state.queues.filter(q => {
+      const qDate = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jakarta'}).format(new Date(q.timestamp)).split('-').reverse().join('/');
+      return q.status === QueueStatus.WAITING && qDate === today;
+    }).sort((a, b) => a.timestamp - b.timestamp);
+
+    if (waiting.length === 0) return alert("Antrean sedang kosong.");
+
+    const next = waiting[0];
+    const user = state.users.find(u => u.npp === npp);
+    const loketNum = loketId.split('-').pop();
+
     setSyncStatus('syncing');
     try {
       await fetch(state.gasUrl, {
         method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({ ...payload, sheet: TARGET_SHEET_NAME })
+        body: JSON.stringify({
+          action: 'UPDATE',
+          "Nomor Antrean": next.rawNumber,
+          "Status Pengerjaan": "Dilayani",
+          "Loket": loketNum,
+          "handledByNpp": npp,
+          "Nama FL (Petugas)": user?.name,
+          "Tanggal": today,
+          "Waktu Panggil": new Date().toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' })
+        })
       });
-      setSyncStatus('success');
-      setTimeout(() => syncStateWithCloud(true), 1500);
+      setTimeout(() => sync(true), 1500);
     } catch (e) {
+      alert("Gagal memanggil antrean. Periksa koneksi.");
       setSyncStatus('error');
     }
   };
 
-  useEffect(() => {
-    syncStateWithCloud(true);
-    const interval = setInterval(() => syncStateWithCloud(), 8000);
-    return () => clearInterval(interval);
-  }, [syncStateWithCloud]);
+  const handleComplete = async (loketId: string, service: string, card: string) => {
+    const loket = state.lokets.find(l => l.id === loketId);
+    const q = state.queues.find(qi => qi.id === loket?.currentQueueId);
+    if (!q) return;
 
-  const handleTakeQueue = useCallback(async (type: 'REGULAR' | 'MJKN') => {
     setSyncStatus('syncing');
-    
-    const freshQueues = await fetchFreshData();
-    const referenceQueues = freshQueues || state.queues;
-    const today = getLocalDate();
-    
-    let prefix = "A";
-    if (type === 'MJKN') prefix = "MJKN";
-    
-    const todayQueues = referenceQueues.filter(q => {
-      const qDate = new Date(q.timestamp).toISOString().split('T')[0];
-      return qDate === today && q.prefix === prefix;
-    });
-
-    const currentMax = Math.max(0, ...todayQueues.map(q => q.number));
-    const nextNum = currentMax + 1;
-    const formattedNo = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
-    
-    const timestamp = Date.now();
-    
-    const newTicket: QueueItem = {
-      id: `q-${formattedNo}-${today}-${timestamp}`,
-      number: nextNum,
-      prefix,
-      rawNumber: formattedNo,
-      status: QueueStatus.WAITING,
-      timestamp
-    };
-
-    setLastGeneratedTicket(newTicket);
-    
-    await pushToCloud({
-      action: 'ADD',
-      "Nomor Antrean": formattedNo,
-      "Status Pengerjaan": "Menunggu",
-      "Tanggal": today,
-      "Waktu Ambil": getTimeString(timestamp)
-    });
-  }, [state.queues, state.gasUrl]);
-
-  const handleCallNext = useCallback(async (loketId: string, npp: string) => {
-    setSyncStatus('syncing');
-    
-    const freshQueues = await fetchFreshData();
-    const referenceQueues = freshQueues || state.queues;
-    const today = getLocalDate();
-    const user = state.users.find(u => u.npp === npp);
-    
-    const waitingQueues = referenceQueues
-      .filter(q => {
-        const qDate = new Date(q.timestamp).toISOString().split('T')[0];
-        return qDate === today && q.status === QueueStatus.WAITING;
-      })
-      .sort((a, b) => a.timestamp - b.timestamp);
-
-    const nextInLine = waitingQueues[0];
-
-    if (!nextInLine) {
-      alert("Seluruh antrean hari ini telah dilayani.");
-      syncStateWithCloud(true);
-      return;
+    try {
+      await fetch(state.gasUrl, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'UPDATE',
+          "Nomor Antrean": q.rawNumber,
+          "Status Pengerjaan": "Selesai",
+          "Jenis Layanan": service,
+          "Noka": card,
+          "Tanggal": getJemberDate(),
+          "Waktu Selesai": new Date().toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Jakarta' })
+        })
+      });
+      setTimeout(() => sync(true), 1500);
+    } catch (e) {
+      alert("Gagal menyelesaikan layanan. Periksa koneksi.");
+      setSyncStatus('error');
     }
+  };
 
-    const startTime = Date.now();
-    const loketNum = loketId.split('-').pop();
+  const handleAddLoket = () => {
+    const newId = `loket-${state.lokets.length + 1}`;
+    const colors: Loket['color'][] = ['blue', 'pink', 'purple', 'emerald', 'amber', 'indigo'];
+    const newLoket: Loket = {
+      id: newId,
+      name: `LOKET ${state.lokets.length + 1}`,
+      color: colors[state.lokets.length % colors.length]
+    };
+    setState(prev => ({ ...prev, lokets: [...prev.lokets, newLoket] }));
+  };
 
-    await pushToCloud({
-      action: 'UPDATE',
-      "Nomor Antrean": nextInLine.rawNumber,
-      "Status Pengerjaan": "Dilayani",
-      "Waktu Panggil": getTimeString(startTime),
-      "Loket": loketNum,
-      "Nama FL (Petugas)": user?.name || npp,
-      "handledByNpp": npp,
-      "Tanggal": today
-    });
-  }, [state.queues, state.users, state.gasUrl, syncStateWithCloud]);
-
-  const handleCompleteQueue = useCallback(async (loketId: string, serviceType: string, cardNumber?: string) => {
-    const currentLoket = state.lokets.find(l => l.id === loketId);
-    const queueItem = state.queues.find(q => q.id === currentLoket?.currentQueueId);
-    if (!queueItem) return;
-
-    const today = getLocalDate();
-    const endTime = Date.now();
-
-    await pushToCloud({
-      action: 'UPDATE',
-      "Nomor Antrean": queueItem.rawNumber,
-      "Status Pengerjaan": "Selesai",
-      "Waktu Selesai": getTimeString(endTime),
-      "Jenis Layanan": serviceType,
-      "Noka": cardNumber || '',
-      "Tanggal": today
-    });
-  }, [state.lokets, state.queues, state.gasUrl]);
-
-  if (isInitializing && state.queues.length === 0) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Memuat Database Antrean...</h2>
-        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium italic">BPJS Kesehatan KC Jember</p>
+        <div className="text-center">
+          <h2 className="font-black text-blue-900 uppercase tracking-widest text-sm mb-1">MEMUAT SISTEM JEMBER</h2>
+          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-tighter">Versi 8.0 - Update Script URL</p>
+        </div>
       </div>
     );
   }
 
-  const currentTodayWaiting = state.queues.filter(q => {
-    const qDate = new Date(q.timestamp).toISOString().split('T')[0];
-    return qDate === getLocalDate() && q.status === QueueStatus.WAITING;
-  });
+  const todayStr = getJemberDate();
+  const waitingCount = state.queues.filter(q => {
+    const qDate = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jakarta'}).format(new Date(q.timestamp)).split('-').reverse().join('/');
+    return qDate === todayStr && q.status === QueueStatus.WAITING;
+  }).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-2">
-        <button 
-          onClick={() => syncStateWithCloud(true)}
-          className={`px-5 py-2.5 rounded-full shadow-xl flex flex-col items-start border transition-all duration-500 hover:scale-105 active:scale-95 ${
-          syncStatus === 'syncing' ? 'bg-white border-blue-100' : 
-          syncStatus === 'success' ? 'bg-emerald-50 border-emerald-200' : 
-          syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
-        >
-          <div className="flex items-center space-x-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-pulse' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-              {syncStatus === 'syncing' ? 'Sinkronisasi...' : 'Sistem Sinkron'}
-            </span>
+    <div className="min-h-screen bg-[#F8FAFC] p-6 md:p-12 flex flex-col items-center space-y-12">
+      {isProcessing && (
+        <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[1000] flex items-center justify-center">
+          <div className="bg-white p-12 rounded-[3rem] shadow-2xl flex flex-col items-center border border-blue-100">
+             <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+             <p className="font-black text-blue-900 uppercase tracking-widest text-[10px]">Menghubungi Server...</p>
           </div>
-          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Sync: {lastSyncTime}</span>
-        </button>
+        </div>
+      )}
+
+      {/* Koneksi Status */}
+      <div className="fixed top-6 right-6 z-[100]">
+        <div className={`px-4 py-2.5 rounded-2xl shadow-lg border flex items-center space-x-3 bg-white transition-colors duration-500 ${syncStatus === 'error' ? 'border-red-200 bg-red-50' : 'border-slate-100'}`}>
+          <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-pulse' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+          <span className="text-[9px] font-black uppercase text-slate-800 tracking-tight">
+            {syncStatus === 'syncing' ? 'Sinkronisasi...' : syncStatus === 'error' ? 'Gangguan Server' : 'Terhubung'}
+          </span>
+        </div>
       </div>
 
-      <div className="w-full max-w-5xl space-y-12">
-        <Header />
-        <div className="flex flex-col items-center space-y-16">
-          <QueueButton onClick={handleTakeQueue} />
-          
-          <LoketSection 
-            lokets={state.lokets} 
-            queues={state.queues} 
-            users={state.users} 
-            nextQueue={currentTodayWaiting.sort((a,b) => a.timestamp - b.timestamp)[0]}
-          />
+      <Header />
 
-          <WaitingPanel count={currentTodayWaiting.length} />
-          
-          <div className="flex flex-col items-center space-y-6">
-             <button onClick={() => setIsAdminOpen(true)} className="group flex items-center space-x-3 text-slate-500 hover:text-blue-600 transition-all bg-white px-8 py-3 rounded-full shadow-md border border-slate-100 hover:shadow-xl hover:-translate-y-1">
-                <div className="bg-slate-100 group-hover:bg-blue-100 p-2 rounded-full transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" /></svg>
-                </div>
-                <span className="text-xs font-black uppercase tracking-[0.2em]">Otoritas Petugas</span>
-             </button>
-             <p className="text-[9px] text-slate-300 font-bold uppercase tracking-[0.4em] text-center max-w-xs leading-relaxed italic">
-               Nomor mengikuti urutan terakhir di Spreadsheet. Reset harian otomatis.
-             </p>
-          </div>
+      <div className="w-full max-w-7xl space-y-16">
+        <QueueButton onClick={handleTakeQueue} isProcessing={isProcessing} />
+        
+        <LoketSection 
+          lokets={state.lokets} 
+          queues={state.queues} 
+          users={state.users} 
+          nextQueue={state.queues.filter(q => {
+            const qDate = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jakarta'}).format(new Date(q.timestamp)).split('-').reverse().join('/');
+            return qDate === todayStr && q.status === QueueStatus.WAITING;
+          }).sort((a,b) => a.timestamp - b.timestamp)[0]}
+        />
+
+        <WaitingPanel count={waitingCount} />
+
+        <div className="flex justify-center pt-8">
+           <button onClick={() => setIsAdminOpen(true)} className="flex items-center space-x-3 bg-white px-8 py-4 rounded-2xl shadow-md border border-slate-100 hover:shadow-xl transition-all active:scale-95 group">
+              <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-blue-50 transition-colors">
+                <svg className="w-4 h-4 text-slate-400 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+              </div>
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Login SO Jember</span>
+           </button>
         </div>
       </div>
 
       {isAdminOpen && (
         <AdminPanel 
-          lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
-          gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { syncStateWithCloud(true); }}
-          onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
-          onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
-          onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
-          onUpdateGasUrl={(url) => setState(prev => ({...prev, gasUrl: url.trim()}))}
-          onUpdateSpreadsheetUrl={(url) => setState(prev => ({...prev, spreadsheetUrl: url.trim()}))}
-          onUpdateLokets={(l) => setState(prev => ({...prev, lokets: l}))}
+          {...state} 
+          onClose={() => setIsAdminOpen(false)}
+          onCallNext={handleCallNext} 
+          onComplete={handleComplete} 
+          onAddLoket={handleAddLoket}
+          onUpdateUsers={(u) => setState(p => ({...p, users: u}))}
           onTakeQueue={handleTakeQueue}
         />
       )}
+
       {lastGeneratedTicket && <TicketModal ticket={lastGeneratedTicket} onClose={() => setLastGeneratedTicket(null)} />}
     </div>
   );
