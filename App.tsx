@@ -8,7 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_so_shared_v13';
+const STORAGE_KEY = 'bpjs_jember_so_shared_v14';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_NAME = 'NEWRekap';
 
@@ -64,6 +64,11 @@ const getVal = (row: any, ...keys: string[]) => {
   return null;
 };
 
+const extractNumberFromRaw = (raw: string): number => {
+  const match = raw.match(/\d+$/);
+  return match ? parseInt(match[0]) : 0;
+};
+
 const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
   const nomerRaw = (getVal(row, "Nomor Antrean", "noantrean", "nomer") || "").toString().trim();
   if (!nomerRaw || nomerRaw === "" || nomerRaw.toLowerCase() === "nomor antrean") return null;
@@ -71,19 +76,14 @@ const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
   const rawStatus = (getVal(row, "Status Pengerjaan", "status") || "").toString().trim().toUpperCase();
   
   let prefix = "A";
-  let number = 0;
-  
-  if (nomerRaw.includes('-')) {
-    const parts = nomerRaw.split('-');
-    prefix = parts[0].trim().toUpperCase();
-    number = parseInt(parts[1].trim()) || 0;
+  if (nomerRaw.toUpperCase().startsWith("MJKN")) {
+    prefix = "MJKN";
   } else {
-    const match = nomerRaw.match(/^([a-zA-Z]+)?\s*(\d+)$/);
-    if (match) {
-      prefix = (match[1] || "A").trim().toUpperCase();
-      number = parseInt(match[2]) || 0;
-    }
+    const match = nomerRaw.match(/^[a-zA-Z]+/);
+    prefix = match ? match[0].toUpperCase() : "A";
   }
+  
+  const number = extractNumberFromRaw(nomerRaw);
   
   let status: QueueStatus = QueueStatus.WAITING;
   if (rawStatus.includes('DILAYANI') || rawStatus.includes('CALL') || rawStatus.includes('PANGGIL')) {
@@ -150,7 +150,6 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const isSyncingRef = useRef(false);
 
-  // Fungsi pengambilan data mentah dari GAS
   const fetchFreshData = async () => {
     if (!state.gasUrl) return null;
     try {
@@ -164,7 +163,7 @@ const App: React.FC = () => {
           .filter((q: any): q is QueueItem => q !== null);
       }
     } catch (e) {
-      console.error("Fetch Error:", e);
+      console.error("Sync Error:", e);
     }
     return null;
   };
@@ -176,7 +175,6 @@ const App: React.FC = () => {
     
     const freshQueues = await fetchFreshData();
     if (freshQueues) {
-      // Kalkulasi nomor berikutnya berdasarkan data paling akhir di Spreadsheet
       const maxRegular = Math.max(0, ...freshQueues.filter(q => q.prefix === 'A').map(q => q.number));
       const maxMjkn = Math.max(0, ...freshQueues.filter(q => q.prefix === 'MJKN').map(q => q.number));
 
@@ -206,7 +204,7 @@ const App: React.FC = () => {
         body: JSON.stringify({ ...payload, sheet: TARGET_SHEET_NAME })
       });
       setSyncStatus('success');
-      // Trigger sync ulang lebih cepat setelah push
+      // Sync immediately after update
       setTimeout(() => syncStateWithCloud(true), 1500);
     } catch (e) {
       setSyncStatus('error');
@@ -215,22 +213,20 @@ const App: React.FC = () => {
 
   useEffect(() => {
     syncStateWithCloud(true);
-    const interval = setInterval(() => syncStateWithCloud(), 10000); // Poll setiap 10 detik
+    const interval = setInterval(() => syncStateWithCloud(), 8000);
     return () => clearInterval(interval);
   }, [syncStateWithCloud]);
 
-  // LOGIKA AMBIL ANTREAN: KRUSIAL - CEK NOMOR TERAKHIR SEBELUM PRINT
   const handleTakeQueue = useCallback(async (type: 'REGULAR' | 'MJKN') => {
     setSyncStatus('syncing');
     
-    // 1. Ambil data terbaru dari spreadsheet secara sinkron
+    // Blocking check to get the ABSOLUTE latest number from the cloud
     const freshQueues = await fetchFreshData();
     const referenceQueues = freshQueues || state.queues;
     
-    const isMjkn = type === 'MJKN';
-    const prefix = isMjkn ? 'MJKN' : 'A';
+    const prefix = type === 'MJKN' ? 'MJKN' : 'A';
     
-    // 2. Temukan nomor tertinggi AKTUAL dari Spreadsheet
+    // Find absolute highest number from the data
     const currentMax = Math.max(0, ...referenceQueues.filter(q => q.prefix === prefix).map(q => q.number));
     const nextNum = currentMax + 1;
     const formattedNo = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
@@ -247,8 +243,9 @@ const App: React.FC = () => {
       timestamp
     };
 
-    // 3. Set UI Lokal & Tampilkan Modal Tiket
     setLastGeneratedTicket(newTicket);
+    
+    // Optimistic local update
     setState(prev => ({
       ...prev,
       queues: [...prev.queues, newTicket],
@@ -256,8 +253,7 @@ const App: React.FC = () => {
       nextMjknNumber: prefix === 'MJKN' ? nextNum + 1 : prev.nextMjknNumber
     }));
 
-    // 4. Kirim ke Database Spreadsheet
-    pushToCloud({
+    await pushToCloud({
       action: 'ADD',
       "Nomor Antrean": formattedNo,
       "Status Pengerjaan": "Menunggu",
@@ -266,17 +262,14 @@ const App: React.FC = () => {
     });
   }, [state.queues, state.gasUrl]);
 
-  // LOGIKA PANGGIL: Berlaku untuk semua Loket (1-4)
   const handleCallNext = useCallback(async (loketId: string, npp: string) => {
     setSyncStatus('syncing');
     
-    // Sync dulu agar tidak tabrakan pemanggilan
     const freshQueues = await fetchFreshData();
     const referenceQueues = freshQueues || state.queues;
-    
     const user = state.users.find(u => u.npp === npp);
     
-    // Cari antrean Menunggu terlama (Universal untuk semua loket)
+    // Loket 1-4 all use the same unified waiting pool
     const waitingQueues = referenceQueues
       .filter(q => q.status === QueueStatus.WAITING)
       .sort((a, b) => a.timestamp - b.timestamp);
@@ -284,7 +277,7 @@ const App: React.FC = () => {
     const nextInLine = waitingQueues[0];
 
     if (!nextInLine) {
-      alert("Tidak ada antrean berstatus 'Menunggu'. Seluruh antrean sudah dilayani.");
+      alert("Antrean kosong. Menunggu peserta baru.");
       syncStateWithCloud(true);
       return;
     }
@@ -292,7 +285,7 @@ const App: React.FC = () => {
     const startTime = Date.now();
     const loketNum = loketId.split('-').pop();
 
-    pushToCloud({
+    await pushToCloud({
       action: 'UPDATE',
       "Nomor Antrean": nextInLine.rawNumber,
       "Status Pengerjaan": "Dilayani",
@@ -303,7 +296,7 @@ const App: React.FC = () => {
     });
   }, [state.queues, state.users, state.gasUrl, syncStateWithCloud]);
 
-  const handleCompleteQueue = useCallback((loketId: string, serviceType: string, cardNumber?: string) => {
+  const handleCompleteQueue = useCallback(async (loketId: string, serviceType: string, cardNumber?: string) => {
     const currentLoket = state.lokets.find(l => l.id === loketId);
     const queueItem = state.queues.find(q => q.id === currentLoket?.currentQueueId);
     if (!queueItem) return;
@@ -312,7 +305,7 @@ const App: React.FC = () => {
     const waitMs = queueItem.startTime ? (queueItem.startTime - queueItem.timestamp) : 0;
     const serviceMs = (endTime - (queueItem.startTime || endTime));
 
-    pushToCloud({
+    await pushToCloud({
       action: 'UPDATE',
       "Nomor Antrean": queueItem.rawNumber,
       "Status Pengerjaan": "Selesai",
@@ -328,15 +321,14 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Sinkronisasi Pusat...</h2>
-        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Mendapatkan nomor antrean terakhir dari Spreadsheet</p>
+        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Sinkronisasi Database...</h2>
+        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Validasi nomor antrean harian</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      {/* Tombol Status Sinkronisasi */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-2">
         <button 
           onClick={() => syncStateWithCloud(true)}
@@ -348,10 +340,10 @@ const App: React.FC = () => {
           <div className="flex items-center space-x-2">
             <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
             <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-              {syncStatus === 'syncing' ? 'Sinkronisasi...' : 'Sistem Terintegrasi'}
+              {syncStatus === 'syncing' ? 'Updating...' : 'Sistem Aktif'}
             </span>
           </div>
-          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Update: {lastSyncTime}</span>
+          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Sync: {lastSyncTime}</span>
         </button>
       </div>
 
@@ -376,9 +368,6 @@ const App: React.FC = () => {
                 </div>
                 <span className="text-xs font-black uppercase tracking-[0.2em]">Panel Operasional Petugas</span>
              </button>
-             <p className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.3em] animate-pulse italic text-center max-w-sm">
-               Nomor antrean selalu berlanjut dari data Spreadsheet.
-             </p>
           </div>
         </div>
       </div>
@@ -387,7 +376,7 @@ const App: React.FC = () => {
         <AdminPanel 
           lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
           gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { if(confirm('⚠️ Reset Harian: Kosongkan seluruh antrean di Spreadsheet?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
+          onReset={() => { if(confirm('⚠️ Reset Harian?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
           onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
