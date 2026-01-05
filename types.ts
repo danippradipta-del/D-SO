@@ -1,8 +1,8 @@
 
 export const QueueStatus = {
-  WAITING: 'WAITING',
-  CALLING: 'CALLING',
-  COMPLETED: 'COMPLETED'
+  WAITING: 'Menunggu',
+  CALLING: 'Dilayani',
+  COMPLETED: 'Selesai'
 } as const;
 
 export type QueueStatus = typeof QueueStatus[keyof typeof QueueStatus];

@@ -8,11 +8,9 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_so_shared_v11';
+const STORAGE_KEY = 'bpjs_jember_so_shared_v13';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
-const TARGET_SPREADSHEET_ID = '1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8';
 const TARGET_SHEET_NAME = 'NEWRekap';
-const TARGET_SHEET_URL = `https://docs.google.com/spreadsheets/d/${TARGET_SPREADSHEET_ID}/edit`;
 
 const DEFAULT_USERS: User[] = [
   { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
@@ -88,13 +86,10 @@ const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
   }
   
   let status: QueueStatus = QueueStatus.WAITING;
-  // Deteksi status Indonesia atau Inggris
   if (rawStatus.includes('DILAYANI') || rawStatus.includes('CALL') || rawStatus.includes('PANGGIL')) {
     status = QueueStatus.CALLING;
   } else if (rawStatus.includes('SELESAI') || rawStatus.includes('COMPLET') || rawStatus.includes('DONE')) {
     status = QueueStatus.COMPLETED;
-  } else if (rawStatus.includes('MENUNGGU') || rawStatus.includes('WAITING') || rawStatus.includes('WAIT')) {
-    status = QueueStatus.WAITING;
   }
 
   const dateStr = getLocalDate();
@@ -134,18 +129,16 @@ const App: React.FC = () => {
     const today = getLocalDate();
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
-    const isSameDay = parsed?.lastDate === today;
-
     return {
       users: parsed?.users || DEFAULT_USERS,
       lokets: parsed?.lokets || DEFAULT_LOKETS,
       serviceTypes: parsed?.serviceTypes || DEFAULT_SERVICE_TYPES,
       gasUrl: parsed?.gasUrl || DEFAULT_GAS_URL,
-      spreadsheetUrl: parsed?.spreadsheetUrl || TARGET_SHEET_URL,
-      queues: isSameDay ? (parsed?.queues || []) : [],
+      spreadsheetUrl: parsed?.spreadsheetUrl || '',
+      queues: [],
       assistantRecords: [],
-      nextNumber: isSameDay ? (parsed?.nextNumber || 1) : 1,
-      nextMjknNumber: isSameDay ? (parsed?.nextMjknNumber || 1) : 1,
+      nextNumber: 1,
+      nextMjknNumber: 1,
       lastDate: today,
     };
   });
@@ -157,152 +150,158 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const isSyncingRef = useRef(false);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
-
-  const fetchGlobalState = useCallback(async (force = false) => {
-    if (!state.gasUrl || (isSyncingRef.current && !force)) return;
-    
-    isSyncingRef.current = true;
-    setSyncStatus('syncing');
+  // Fungsi pengambilan data mentah dari GAS
+  const fetchFreshData = async () => {
+    if (!state.gasUrl) return null;
     try {
       const url = `${state.gasUrl}?action=getState&sheet=${TARGET_SHEET_NAME}&_=${Date.now()}`;
-      const response = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
-      
-      if (!response.ok) throw new Error();
+      const response = await fetch(url);
+      if (!response.ok) return null;
       const cloudData = await response.json();
-      
       if (cloudData && Array.isArray(cloudData.queues)) {
-        const mappedQueues = cloudData.queues
+        return cloudData.queues
           .map((row: any, idx: number) => mapCloudRowToQueueItem(row, idx))
           .filter((q: any): q is QueueItem => q !== null);
-
-        setState(prev => ({
-          ...prev,
-          queues: mappedQueues,
-          lokets: cloudData.lokets || prev.lokets,
-          nextNumber: cloudData.nextNumber || prev.nextNumber,
-          nextMjknNumber: cloudData.nextMjknNumber || prev.nextMjknNumber,
-          lastDate: getLocalDate()
-        }));
-        setSyncStatus('success');
-        setLastSyncTime(new Date().toLocaleTimeString());
-        setTimeout(() => setSyncStatus('idle'), 1500);
       }
     } catch (e) {
-      setSyncStatus('error');
-    } finally {
-      isSyncingRef.current = false;
-      setIsInitializing(false);
+      console.error("Fetch Error:", e);
     }
+    return null;
+  };
+
+  const syncStateWithCloud = useCallback(async (force = false) => {
+    if (isSyncingRef.current && !force) return;
+    isSyncingRef.current = true;
+    setSyncStatus('syncing');
+    
+    const freshQueues = await fetchFreshData();
+    if (freshQueues) {
+      // Kalkulasi nomor berikutnya berdasarkan data paling akhir di Spreadsheet
+      const maxRegular = Math.max(0, ...freshQueues.filter(q => q.prefix === 'A').map(q => q.number));
+      const maxMjkn = Math.max(0, ...freshQueues.filter(q => q.prefix === 'MJKN').map(q => q.number));
+
+      setState(prev => ({
+        ...prev,
+        queues: freshQueues,
+        nextNumber: maxRegular + 1,
+        nextMjknNumber: maxMjkn + 1
+      }));
+      setSyncStatus('success');
+      setLastSyncTime(new Date().toLocaleTimeString());
+      setTimeout(() => setSyncStatus('idle'), 1000);
+    } else {
+      setSyncStatus('error');
+    }
+    isSyncingRef.current = false;
+    setIsInitializing(false);
   }, [state.gasUrl]);
 
-  const pushToCloud = async (actionPayload: any) => {
+  const pushToCloud = async (payload: any) => {
     if (!state.gasUrl) return;
     setSyncStatus('syncing');
     try {
       await fetch(state.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ 
-          ...actionPayload, 
-          sheet: TARGET_SHEET_NAME,
-          fullState: state 
-        })
+        body: JSON.stringify({ ...payload, sheet: TARGET_SHEET_NAME })
       });
       setSyncStatus('success');
-      setTimeout(() => fetchGlobalState(true), 1000);
+      // Trigger sync ulang lebih cepat setelah push
+      setTimeout(() => syncStateWithCloud(true), 1500);
     } catch (e) {
       setSyncStatus('error');
     }
   };
 
   useEffect(() => {
-    fetchGlobalState(true);
-    const interval = setInterval(() => fetchGlobalState(), 5000);
+    syncStateWithCloud(true);
+    const interval = setInterval(() => syncStateWithCloud(), 10000); // Poll setiap 10 detik
     return () => clearInterval(interval);
-  }, [fetchGlobalState]);
+  }, [syncStateWithCloud]);
 
-  const handleTakeQueue = useCallback((type: 'REGULAR' | 'MJKN') => {
-    const timestamp = Date.now();
+  // LOGIKA AMBIL ANTREAN: KRUSIAL - CEK NOMOR TERAKHIR SEBELUM PRINT
+  const handleTakeQueue = useCallback(async (type: 'REGULAR' | 'MJKN') => {
+    setSyncStatus('syncing');
+    
+    // 1. Ambil data terbaru dari spreadsheet secara sinkron
+    const freshQueues = await fetchFreshData();
+    const referenceQueues = freshQueues || state.queues;
+    
     const isMjkn = type === 'MJKN';
-    const dateStr = getLocalDate();
-    const number = isMjkn ? state.nextMjknNumber : state.nextNumber;
     const prefix = isMjkn ? 'MJKN' : 'A';
-    const formattedNo = `${prefix}-${number.toString().padStart(3, '0')}`;
+    
+    // 2. Temukan nomor tertinggi AKTUAL dari Spreadsheet
+    const currentMax = Math.max(0, ...referenceQueues.filter(q => q.prefix === prefix).map(q => q.number));
+    const nextNum = currentMax + 1;
+    const formattedNo = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
+    
+    const timestamp = Date.now();
+    const dateStr = getLocalDate();
     
     const newTicket: QueueItem = {
       id: `q-${formattedNo}-${dateStr}-${timestamp}`,
-      number,
+      number: nextNum,
       prefix,
       rawNumber: formattedNo,
       status: QueueStatus.WAITING,
       timestamp
     };
 
+    // 3. Set UI Lokal & Tampilkan Modal Tiket
     setLastGeneratedTicket(newTicket);
-    const nextNumber = isMjkn ? state.nextNumber : state.nextNumber + 1;
-    const nextMjknNumber = isMjkn ? state.nextMjknNumber + 1 : state.nextMjknNumber;
-
     setState(prev => ({
       ...prev,
       queues: [...prev.queues, newTicket],
-      nextNumber,
-      nextMjknNumber
+      nextNumber: prefix === 'A' ? nextNum + 1 : prev.nextNumber,
+      nextMjknNumber: prefix === 'MJKN' ? nextNum + 1 : prev.nextMjknNumber
     }));
 
+    // 4. Kirim ke Database Spreadsheet
     pushToCloud({
       action: 'ADD',
       "Nomor Antrean": formattedNo,
       "Status Pengerjaan": "Menunggu",
       "Tanggal": dateStr,
-      "Waktu Ambil": getTimeString(timestamp),
-      nextNumber,
-      nextMjknNumber
+      "Waktu Ambil": getTimeString(timestamp)
     });
-  }, [state.nextNumber, state.nextMjknNumber, state.gasUrl]);
+  }, [state.queues, state.gasUrl]);
 
-  const handleCallNext = useCallback((loketId: string, npp: string) => {
-    const user = state.users.find(u => u.npp === npp);
-    const isAsisten = user?.role === 'ASISTEN_ADMIN';
-    const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  // LOGIKA PANGGIL: Berlaku untuk semua Loket (1-4)
+  const handleCallNext = useCallback(async (loketId: string, npp: string) => {
+    setSyncStatus('syncing');
     
-    const waitingQueues = state.queues
-      .filter(q => q.status === QueueStatus.WAITING && (isAdmin || q.prefix === 'MJKN'))
+    // Sync dulu agar tidak tabrakan pemanggilan
+    const freshQueues = await fetchFreshData();
+    const referenceQueues = freshQueues || state.queues;
+    
+    const user = state.users.find(u => u.npp === npp);
+    
+    // Cari antrean Menunggu terlama (Universal untuk semua loket)
+    const waitingQueues = referenceQueues
+      .filter(q => q.status === QueueStatus.WAITING)
       .sort((a, b) => a.timestamp - b.timestamp);
 
     const nextInLine = waitingQueues[0];
 
     if (!nextInLine) {
-      const typeLabel = isAsisten ? "MJKN" : "Apapun (A atau MJKN)";
-      alert(`Antrean ${typeLabel} dengan status MENUNGGU tidak ditemukan di Spreadsheet.`);
-      fetchGlobalState(true);
+      alert("Tidak ada antrean berstatus 'Menunggu'. Seluruh antrean sudah dilayani.");
+      syncStateWithCloud(true);
       return;
     }
 
     const startTime = Date.now();
-    const loketObj = state.lokets.find(l => l.id === loketId);
-    const loketName = loketObj?.name || `LOKET ${loketId.split('-').pop()}`;
+    const loketNum = loketId.split('-').pop();
 
-    setState(prev => {
-      const updatedQueues = prev.queues.map(q => q.id === nextInLine.id ? { ...q, status: QueueStatus.CALLING, loketId, handledByNpp: npp, startTime } : q);
-      const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: nextInLine.id } : l);
-      
-      pushToCloud({
-        action: 'UPDATE',
-        "Nomor Antrean": nextInLine.rawNumber,
-        "Status Pengerjaan": "Dilayani",
-        "Waktu Panggil": getTimeString(startTime),
-        "Loket": loketName,
-        "Nama FL (Petugas)": user?.name || npp,
-        "handledByNpp": npp
-      });
-
-      return { ...prev, queues: updatedQueues, lokets: updatedLokets };
+    pushToCloud({
+      action: 'UPDATE',
+      "Nomor Antrean": nextInLine.rawNumber,
+      "Status Pengerjaan": "Dilayani",
+      "Waktu Panggil": getTimeString(startTime),
+      "Loket": loketNum,
+      "Nama FL (Petugas)": user?.name || npp,
+      "handledByNpp": npp
     });
-  }, [state.queues, state.lokets, state.users, fetchGlobalState]);
+  }, [state.queues, state.users, state.gasUrl, syncStateWithCloud]);
 
   const handleCompleteQueue = useCallback((loketId: string, serviceType: string, cardNumber?: string) => {
     const currentLoket = state.lokets.find(l => l.id === loketId);
@@ -313,22 +312,15 @@ const App: React.FC = () => {
     const waitMs = queueItem.startTime ? (queueItem.startTime - queueItem.timestamp) : 0;
     const serviceMs = (endTime - (queueItem.startTime || endTime));
 
-    setState(prev => {
-      const updatedQueues = prev.queues.map(q => q.id === queueItem.id ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType, cardNumber } : q);
-      const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: undefined } : l);
-      
-      pushToCloud({
-        action: 'UPDATE',
-        "Nomor Antrean": queueItem.rawNumber,
-        "Status Pengerjaan": "Selesai",
-        "Waktu Selesai": getTimeString(endTime),
-        "Jenis Layanan": serviceType,
-        "Waktu Tunggu": formatDuration(waitMs),
-        "Waktu Layanan": formatDuration(serviceMs),
-        "Noka": cardNumber || ''
-      });
-
-      return { ...prev, queues: updatedQueues, lokets: updatedLokets };
+    pushToCloud({
+      action: 'UPDATE',
+      "Nomor Antrean": queueItem.rawNumber,
+      "Status Pengerjaan": "Selesai",
+      "Waktu Selesai": getTimeString(endTime),
+      "Jenis Layanan": serviceType,
+      "Waktu Tunggu": formatDuration(waitMs),
+      "Waktu Layanan": formatDuration(serviceMs),
+      "Noka": cardNumber || ''
     });
   }, [state.lokets, state.queues, state.gasUrl]);
 
@@ -336,29 +328,32 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-xl font-black text-slate-800 uppercase italic">Sinkronisasi Jember...</h2>
-        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Memastikan status layanan terupdate...</p>
+        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Sinkronisasi Pusat...</h2>
+        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">Mendapatkan nomor antrean terakhir dari Spreadsheet</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      <button 
-        onClick={() => fetchGlobalState(true)}
-        className={`fixed top-4 right-4 px-5 py-2.5 rounded-full shadow-xl flex flex-col items-start border z-[100] transition-all duration-500 hover:scale-105 active:scale-95 ${
-        syncStatus === 'syncing' ? 'bg-white border-blue-100' : 
-        syncStatus === 'success' ? 'bg-emerald-50 border-emerald-200' : 
-        syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
-      >
-        <div className="flex items-center space-x-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-            {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'success' ? 'Cloud Connected' : syncStatus === 'error' ? 'Sync Error' : 'Refresh Data'}
-          </span>
-        </div>
-        <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Sync: {lastSyncTime}</span>
-      </button>
+      {/* Tombol Status Sinkronisasi */}
+      <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-2">
+        <button 
+          onClick={() => syncStateWithCloud(true)}
+          className={`px-5 py-2.5 rounded-full shadow-xl flex flex-col items-start border transition-all duration-500 hover:scale-105 active:scale-95 ${
+          syncStatus === 'syncing' ? 'bg-white border-blue-100' : 
+          syncStatus === 'success' ? 'bg-emerald-50 border-emerald-200' : 
+          syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
+        >
+          <div className="flex items-center space-x-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+              {syncStatus === 'syncing' ? 'Sinkronisasi...' : 'Sistem Terintegrasi'}
+            </span>
+          </div>
+          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Update: {lastSyncTime}</span>
+        </button>
+      </div>
 
       <div className="w-full max-w-5xl space-y-12">
         <Header />
@@ -382,7 +377,7 @@ const App: React.FC = () => {
                 <span className="text-xs font-black uppercase tracking-[0.2em]">Panel Operasional Petugas</span>
              </button>
              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.3em] animate-pulse italic text-center max-w-sm">
-               Status Antrean: Menunggu, Dilayani, dan Selesai.
+               Nomor antrean selalu berlanjut dari data Spreadsheet.
              </p>
           </div>
         </div>
