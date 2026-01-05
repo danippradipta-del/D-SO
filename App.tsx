@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueueStatus, QueueItem, Loket, AppState, User } from './types.ts';
 import Header from './components/Header.tsx';
@@ -11,7 +12,6 @@ const STORAGE_KEY = 'bpjs_jember_so_shared_v4';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1FBK_y9mcqqNOkaw9kI9zJASO58RB4Rf48XQR1huozp8/edit?usp=sharing';
 
-// DAFTAR PETUGA SESUAI PERMINTAAN USER
 const DEFAULT_USERS: User[] = [
   { id: 'u1', name: 'Putri Oktavia Gupitasari', npp: '220060', email: 'putri.oktavia@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-1' },
   { id: 'u2', name: 'Anisa Dea Suryani', npp: '250168', email: '250168.anisa@bpjs-kesehatan.go.id', role: 'ADMIN', assignedLoketId: 'loket-2' },
@@ -82,64 +82,79 @@ const App: React.FC = () => {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [lastGeneratedTicket, setLastGeneratedTicket] = useState<QueueItem | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'success'>('idle');
-  // Fix: Replaced NodeJS.Timeout with number for browser compatibility
-  const syncTimerRef = useRef<number | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Simpan ke local storage agar jika internet putus, state terakhir tetap ada
+  // Sync to local storage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   /**
-   * SINKRONISASI CLOUD (Sinkronisasi Antar Perangkat)
-   * Mengirim aksi ke Google Sheets. 
-   * Dalam implementasi produksi yang ideal, fungsi ini juga akan mengambil 
-   * state terbaru dari Cloud untuk di-merge ke lokal.
+   * FUNGSI UTAMA: MENGAMBIL DATA DARI CLOUD (SPREADSHEET)
+   * Ini memastikan semua perangkat memiliki data yang sama.
    */
-  const syncWithCloud = async (actionPayload: any) => {
+  const fetchGlobalState = useCallback(async () => {
+    if (!state.gasUrl) return;
+    
+    try {
+      // Mengirim GET request ke GAS dengan parameter action=getState
+      const response = await fetch(`${state.gasUrl}?action=getState`);
+      const cloudData = await response.json();
+
+      if (cloudData && cloudData.queues) {
+        setState(prev => {
+          // Hanya update jika tanggal sama atau cloud memiliki data terbaru
+          const cloudDate = cloudData.lastDate || new Date().toDateString();
+          if (cloudDate !== prev.lastDate) {
+             // Reset harian jika cloud mendeteksi hari baru
+             return { ...prev, queues: [], nextNumber: 1, nextMjknNumber: 1, lastDate: cloudDate };
+          }
+
+          return {
+            ...prev,
+            queues: cloudData.queues,
+            lokets: cloudData.lokets || prev.lokets,
+            nextNumber: cloudData.nextNumber || prev.nextNumber,
+            nextMjknNumber: cloudData.nextMjknNumber || prev.nextMjknNumber,
+            users: cloudData.users || prev.users
+          };
+        });
+      }
+      setSyncStatus('idle');
+    } catch (e) {
+      console.warn('Sync Pull Error (Mungkin GAS belum dikonfigurasi untuk GET):', e);
+    } finally {
+      setIsInitializing(false);
+    }
+  }, [state.gasUrl]);
+
+  /**
+   * SINKRONISASI PUSH: Mengirim perubahan ke Cloud
+   */
+  const pushToCloud = async (actionPayload: any) => {
     if (!state.gasUrl) return;
     setSyncStatus('syncing');
     try {
-      // Mengirim POST ke Google Apps Script
       await fetch(state.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(actionPayload)
+        body: JSON.stringify({ ...actionPayload, fullState: state })
       });
       setSyncStatus('success');
-      setTimeout(() => setSyncStatus('idle'), 3000);
+      setTimeout(() => setSyncStatus('idle'), 2000);
     } catch (e) {
-      console.error('Sync Error:', e);
+      console.error('Push Error:', e);
       setSyncStatus('error');
     }
   };
 
-  /**
-   * POLLING: Mengecek pembaruan dari perangkat lain secara berkala.
-   * Karena GAS no-cors terbatas, kita mensimulasikan sinkronisasi state global 
-   * melalui localStorage sebagai fallback antar-tab, dan GAS sebagai master database.
-   */
+  // Jalankan polling setiap 10 detik untuk mendapatkan data terbaru dari Spreadsheet
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        const cloudState = JSON.parse(e.newValue);
-        if (cloudState.lastDate === state.lastDate) {
-           setState(prev => ({
-             ...prev,
-             queues: cloudState.queues,
-             lokets: cloudState.lokets,
-             users: cloudState.users,
-             nextNumber: cloudState.nextNumber,
-             nextMjknNumber: cloudState.nextMjknNumber
-           }));
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [state.lastDate]);
+    fetchGlobalState(); // Initial fetch
+    const interval = setInterval(fetchGlobalState, 10000); 
+    return () => clearInterval(interval);
+  }, [fetchGlobalState]);
 
   const handleTakeQueue = useCallback((type: 'REGULAR' | 'MJKN') => {
     const timestamp = Date.now();
@@ -159,7 +174,7 @@ const App: React.FC = () => {
 
       setLastGeneratedTicket(newTicket);
 
-      syncWithCloud({
+      pushToCloud({
         action: 'ADD',
         "Nomor Antrean": `${prefix}-${number.toString().padStart(3, '0')}`,
         "Status Pengerjaan": "WAITING",
@@ -194,7 +209,7 @@ const App: React.FC = () => {
       const updatedQueues = prev.queues.map(q => q.id === nextInLine.id ? { ...q, status: QueueStatus.CALLING, loketId, handledByNpp: npp, startTime } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: nextInLine.id } : l);
       
-      syncWithCloud({
+      pushToCloud({
         action: 'UPDATE',
         "Nomor Antrean": `${nextInLine.prefix}-${nextInLine.number.toString().padStart(3, '0')}`,
         "Status Pengerjaan": "CALLING",
@@ -222,7 +237,7 @@ const App: React.FC = () => {
       const updatedQueues = prev.queues.map(q => q.id === currentLoket.currentQueueId ? { ...q, status: QueueStatus.COMPLETED, endTime, serviceType, cardNumber } : q);
       const updatedLokets = prev.lokets.map(l => l.id === loketId ? { ...l, currentQueueId: undefined } : l);
       
-      syncWithCloud({
+      pushToCloud({
         action: 'UPDATE',
         "Nomor Antrean": `${queueItem.prefix}-${queueItem.number.toString().padStart(3, '0')}`,
         "Status Pengerjaan": "COMPLETED",
@@ -240,16 +255,26 @@ const App: React.FC = () => {
     });
   }, [state.lokets, state.queues, state.users, state.gasUrl]);
 
+  if (isInitializing && state.queues.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-slate-500 font-bold animate-pulse">Menghubungkan ke Database Cloud...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-      {/* Cloud Sync Status Indicator */}
       <div className={`fixed top-4 right-4 px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 border z-[100] transition-all duration-500 ${
         syncStatus === 'syncing' ? 'bg-white border-blue-100' : 
-        syncStatus === 'success' ? 'bg-emerald-50 border-emerald-200 translate-y-0' : 
-        syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'opacity-0 -translate-y-4'}`}>
+        syncStatus === 'success' ? 'bg-emerald-50 border-emerald-200' : 
+        syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
         <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
         <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-          {syncStatus === 'syncing' ? 'Cloud Sync...' : syncStatus === 'success' ? 'Tersinkron' : 'Gagal Sinkron!'}
+          {syncStatus === 'syncing' ? 'Cloud Sync...' : syncStatus === 'success' ? 'Tersinkron' : syncStatus === 'error' ? 'Sync Error' : 'Database Terhubung'}
         </span>
       </div>
 
@@ -266,7 +291,7 @@ const App: React.FC = () => {
           <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING).length} />
           <button onClick={() => setIsAdminOpen(true)} className="flex items-center space-x-2 text-slate-400 hover:text-blue-600 transition-colors bg-white px-6 py-2 rounded-full shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-            <span>Panel Operasional (NPP Petugas)</span>
+            <span>Panel Operasional (Login NPP)</span>
           </button>
         </div>
       </div>
@@ -274,7 +299,7 @@ const App: React.FC = () => {
         <AdminPanel 
           lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
           gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { if(confirm('Reset semua antrean hari ini?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
+          onReset={() => { if(confirm('Reset semua antrean?')) setState(prev => ({...prev, queues: [], nextNumber: 1, nextMjknNumber: 1})); }}
           onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
