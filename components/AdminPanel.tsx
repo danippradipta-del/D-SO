@@ -18,6 +18,7 @@ interface AdminPanelProps {
   onUpdateGasUrl: (url: string) => void;
   onUpdateSpreadsheetUrl: (url: string) => void;
   onUpdateLokets: (lokets: Loket[]) => void;
+  onTakeQueue: (type: 'REGULAR' | 'MJKN') => void;
 }
 
 const SLA_WAIT_MINUTES = 30;
@@ -53,7 +54,7 @@ const SLATimer: React.FC<{
   );
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceTypes, gasUrl, spreadsheetUrl, onClose, onReset, onCallNext, onComplete, onUpdateUsers, onUpdateServiceTypes, onUpdateGasUrl, onUpdateSpreadsheetUrl, onUpdateLokets }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceTypes, gasUrl, spreadsheetUrl, onClose, onReset, onCallNext, onComplete, onUpdateUsers, onUpdateServiceTypes, onUpdateGasUrl, onUpdateSpreadsheetUrl, onUpdateLokets, onTakeQueue }) => {
   const [loginNpp, setLoginNpp] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -87,15 +88,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
   const isSuper = currentUser?.role === 'SUPER_ADMIN';
   const isAdmin = currentUser?.role === 'ADMIN' || isSuper;
 
+  const getLocalDate = () => new Date().toISOString().split('T')[0];
+  const waitingCount = queues.filter(q => {
+    const qDate = new Date(q.timestamp).toISOString().split('T')[0];
+    return qDate === getLocalDate() && q.status === QueueStatus.WAITING;
+  }).length;
+
   if (!currentUser) {
     return (
       <div className="fixed inset-0 z-[150] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl text-center animate-in zoom-in duration-300">
+        <div className="bg-white w-full max-md rounded-3xl p-8 shadow-2xl text-center animate-in zoom-in duration-300">
           <div className="mb-6 flex justify-center">
             <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black italic">D-SO</div>
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">Login Petugas</h2>
-          <p className="text-slate-500 text-sm mb-8 font-medium italic">Satu sistem terintegrasi untuk Jember.</p>
+          <p className="text-slate-500 text-sm mb-8 font-medium italic">Satu sistem terintegrasi BPJS Kesehatan Jember.</p>
           <form onSubmit={handleLogin} className="space-y-4">
             <input type="text" placeholder="Masukkan NPP" className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" value={loginNpp} onChange={e => setLoginNpp(e.target.value)} required />
             <input type="password" placeholder="Password (12345678)" className="w-full px-6 py-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required />
@@ -113,11 +120,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
         <div className="flex items-center space-x-4">
           <div className="bg-blue-600 p-2 rounded-xl text-white font-black px-3">D-SO</div>
           <div>
-            <h2 className="text-lg font-black text-slate-800 uppercase leading-tight tracking-tighter">Panel Terintegrasi Jember</h2>
+            <h2 className="text-lg font-black text-slate-800 uppercase leading-tight tracking-tighter">Panel Petugas Terintegrasi</h2>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{currentUser.name} | {currentUser.role}</p>
           </div>
         </div>
         <div className="flex items-center space-x-4">
+          {isAdmin && (
+            <div className="flex space-x-2 mr-4">
+               <button onClick={() => onTakeQueue('REGULAR')} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase border border-blue-100 hover:bg-blue-100">Ambil Reguler</button>
+               <button onClick={() => onTakeQueue('MJKN')} className="px-4 py-2 bg-purple-50 text-purple-600 rounded-xl text-[10px] font-black uppercase border border-purple-100 hover:bg-purple-100">Ambil MJKN</button>
+            </div>
+          )}
           <nav className="bg-slate-100 p-1.5 rounded-2xl flex space-x-1">
             <button onClick={() => setActiveTab('service')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'service' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Layanan</button>
             {isAdmin && <button onClick={() => setActiveTab('users')} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'users' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Petugas</button>}
@@ -138,10 +151,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                   const currentQueue = queues.find(q => q.id === loket.currentQueueId);
                   const isCalling = !!currentQueue;
                   const assignedUser = users.find(u => u.assignedLoketId === loket.id);
-                  
-                  // Perhitungan antrean Menunggu (Universal untuk semua loket)
-                  const waitingCount = queues.filter(q => q.status === QueueStatus.WAITING).length;
-
                   const accentColor = loket.color === 'pink' ? 'pink' : loket.color === 'purple' ? 'purple' : loket.color === 'emerald' ? 'emerald' : 'blue';
                   
                   return (
@@ -155,13 +164,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                                Petugas: {assignedUser ? assignedUser.name : 'STANDBY'}
                              </p>
                            </div>
-                           <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase shadow-sm bg-blue-50 text-blue-600`}>
-                             Global Access
-                           </span>
                         </div>
 
                         <div className="bg-slate-50 rounded-3xl p-10 flex flex-col items-center border border-slate-100 shadow-inner">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Status: Dilayani</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Sedang Dilayani</span>
                           <span className={`text-6xl font-black tabular-nums tracking-tighter ${isCalling ? `text-${accentColor}-600` : 'text-slate-200'}`}>
                             {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '---'}
                           </span>
@@ -170,8 +176,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ lokets, queues, users, serviceT
                         {isCalling && currentQueue && (
                           <div className="space-y-4">
                              <div className="space-y-2">
-                                <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Menunggu" />
-                                <SLATimer startTime={currentQueue.startTime!} type="SERVICE" label="Dilayani" />
+                                <SLATimer startTime={currentQueue.timestamp} endTime={currentQueue.startTime} type="WAIT" label="Antrean Masuk" />
+                                <SLATimer startTime={currentQueue.startTime || Date.now()} type="SERVICE" label="Durasi Layan" />
                              </div>
                              <div className="space-y-3">
                                 <input type="text" maxLength={13} placeholder="Noka JKN (13 Digit)" className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500" value={cardNumbers[loket.id] || ''} onChange={e => setCardNumbers(prev => ({ ...prev, [loket.id]: e.target.value.replace(/\D/g, '') }))} />

@@ -9,7 +9,6 @@ interface TicketModalProps {
 
 const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose }) => {
   useEffect(() => {
-    // Auto close after 10 seconds if not clicked
     const timer = setTimeout(onClose, 10000);
     return () => clearTimeout(timer);
   }, [onClose]);
@@ -32,7 +31,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
            </div>
-           <h3 className="text-xl font-bold">Berhasil Diambil</h3>
+           <h3 className="text-xl font-bold">Nomor Berhasil Diambil</h3>
            <p className="text-white/70 text-sm">Silakan tunggu nomor Anda dipanggil</p>
         </div>
         

@@ -8,7 +8,7 @@ import WaitingPanel from './components/WaitingPanel.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import TicketModal from './components/TicketModal.tsx';
 
-const STORAGE_KEY = 'bpjs_jember_so_v15_final';
+const STORAGE_KEY = 'bpjs_jember_so_v17_fix';
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwgKhA3N2DutVFYYBUv5F9tAWccmJQtTcBQzrxW5l8ii432QXN-HgyR5A4rDvUb12JdFA/exec';
 const TARGET_SHEET_NAME = 'NEWRekap';
 
@@ -45,7 +45,6 @@ const DEFAULT_SERVICE_TYPES = [
   "Tidak bisa dilayani di SO"
 ];
 
-// Helper: Mendapatkan tanggal hari ini dalam format YYYY-MM-DD
 const getLocalDate = () => {
   const d = new Date();
   return d.toISOString().split('T')[0];
@@ -63,6 +62,7 @@ const getVal = (row: any, ...keys: string[]) => {
 };
 
 const extractNumberFromRaw = (raw: string): number => {
+  if (!raw) return 0;
   const match = raw.match(/\d+$/);
   return match ? parseInt(match[0]) : 0;
 };
@@ -108,19 +108,12 @@ const mapCloudRowToQueueItem = (row: any, index: number): QueueItem | null => {
     loketId,
     serviceType: getVal(row, "Jenis Layanan", "layanan"),
     handledByNpp: getVal(row, "handledByNpp", "NPP Petugas"),
-    cardNumber: getVal(row, "Noka", "Nomor Kartu")
+    cardNumber: getVal(row, "Noka", "Nomor Kartu"),
+    startTime: status === QueueStatus.CALLING ? timestamp : undefined
   };
 };
 
 const getTimeString = (ts: number) => new Date(ts).toTimeString().split(' ')[0];
-
-const formatDuration = (ms: number) => {
-  const s = Math.floor(Math.max(0, ms) / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
-};
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
@@ -148,7 +141,6 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const isSyncingRef = useRef(false);
 
-  // Fetch data terbaru dari Cloud
   const fetchFreshData = async () => {
     if (!state.gasUrl) return null;
     try {
@@ -176,7 +168,6 @@ const App: React.FC = () => {
     const today = getLocalDate();
 
     if (freshQueues) {
-      // Hanya hitung nomor berikutnya dari data HARI INI
       const todayQueues = freshQueues.filter(q => {
         const qDate = new Date(q.timestamp).toISOString().split('T')[0];
         return qDate === today;
@@ -185,9 +176,17 @@ const App: React.FC = () => {
       const maxRegular = Math.max(0, ...todayQueues.filter(q => q.prefix === 'A').map(q => q.number));
       const maxMjkn = Math.max(0, ...todayQueues.filter(q => q.prefix === 'MJKN').map(q => q.number));
 
+      const updatedLokets = state.lokets.map(l => {
+        const activeQueue = todayQueues.find(q => 
+          q.status === QueueStatus.CALLING && q.loketId === l.id
+        );
+        return { ...l, currentQueueId: activeQueue?.id };
+      });
+
       setState(prev => ({
         ...prev,
         queues: freshQueues,
+        lokets: updatedLokets,
         nextNumber: maxRegular + 1,
         nextMjknNumber: maxMjkn + 1,
         lastDate: today
@@ -200,7 +199,7 @@ const App: React.FC = () => {
     }
     isSyncingRef.current = false;
     setIsInitializing(false);
-  }, [state.gasUrl]);
+  }, [state.gasUrl, state.lokets]);
 
   const pushToCloud = async (payload: any) => {
     if (!state.gasUrl) return;
@@ -224,7 +223,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [syncStateWithCloud]);
 
-  // LOGIKA AMBIL ANTREAN: RESET HARIAN TERJAMIN
   const handleTakeQueue = useCallback(async (type: 'REGULAR' | 'MJKN') => {
     setSyncStatus('syncing');
     
@@ -232,9 +230,9 @@ const App: React.FC = () => {
     const referenceQueues = freshQueues || state.queues;
     const today = getLocalDate();
     
-    const prefix = type === 'MJKN' ? 'MJKN' : 'A';
+    let prefix = "A";
+    if (type === 'MJKN') prefix = "MJKN";
     
-    // Filter data HARI INI saja untuk menentukan nomor urut
     const todayQueues = referenceQueues.filter(q => {
       const qDate = new Date(q.timestamp).toISOString().split('T')[0];
       return qDate === today && q.prefix === prefix;
@@ -266,17 +264,14 @@ const App: React.FC = () => {
     });
   }, [state.queues, state.gasUrl]);
 
-  // LOGIKA PANGGIL: SINKRONISASI TOTAL 1-4 LOKET
   const handleCallNext = useCallback(async (loketId: string, npp: string) => {
     setSyncStatus('syncing');
     
     const freshQueues = await fetchFreshData();
     const referenceQueues = freshQueues || state.queues;
     const today = getLocalDate();
-    
     const user = state.users.find(u => u.npp === npp);
     
-    // Ambil antrean menunggu hari ini yang belum diproses siapapun
     const waitingQueues = referenceQueues
       .filter(q => {
         const qDate = new Date(q.timestamp).toISOString().split('T')[0];
@@ -287,7 +282,7 @@ const App: React.FC = () => {
     const nextInLine = waitingQueues[0];
 
     if (!nextInLine) {
-      alert("Antrean hari ini sudah habis. Silakan tunggu peserta baru.");
+      alert("Seluruh antrean hari ini telah dilayani.");
       syncStateWithCloud(true);
       return;
     }
@@ -303,7 +298,7 @@ const App: React.FC = () => {
       "Loket": loketNum,
       "Nama FL (Petugas)": user?.name || npp,
       "handledByNpp": npp,
-      "Tanggal": today // Pastikan update dilakukan pada baris tanggal yang sama
+      "Tanggal": today
     });
   }, [state.queues, state.users, state.gasUrl, syncStateWithCloud]);
 
@@ -314,8 +309,6 @@ const App: React.FC = () => {
 
     const today = getLocalDate();
     const endTime = Date.now();
-    const waitMs = queueItem.startTime ? (queueItem.startTime - queueItem.timestamp) : 0;
-    const serviceMs = (endTime - (queueItem.startTime || endTime));
 
     await pushToCloud({
       action: 'UPDATE',
@@ -323,8 +316,6 @@ const App: React.FC = () => {
       "Status Pengerjaan": "Selesai",
       "Waktu Selesai": getTimeString(endTime),
       "Jenis Layanan": serviceType,
-      "Waktu Tunggu": formatDuration(waitMs),
-      "Waktu Layanan": formatDuration(serviceMs),
       "Noka": cardNumber || '',
       "Tanggal": today
     });
@@ -334,11 +325,16 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Memvalidasi Hari...</h2>
-        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium">BPJS Kesehatan Jember - DSO System</p>
+        <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">Memuat Database Antrean...</h2>
+        <p className="text-slate-500 text-sm mt-2 animate-pulse font-medium italic">BPJS Kesehatan KC Jember</p>
       </div>
     );
   }
+
+  const currentTodayWaiting = state.queues.filter(q => {
+    const qDate = new Date(q.timestamp).toISOString().split('T')[0];
+    return qDate === getLocalDate() && q.status === QueueStatus.WAITING;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
@@ -351,12 +347,12 @@ const App: React.FC = () => {
           syncStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
         >
           <div className="flex items-center space-x-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-ping' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+            <div className={`w-2.5 h-2.5 rounded-full ${syncStatus === 'syncing' ? 'bg-blue-500 animate-pulse' : syncStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
             <span className={`text-[10px] font-black uppercase tracking-widest ${syncStatus === 'syncing' ? 'text-blue-600' : syncStatus === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-              {syncStatus === 'syncing' ? 'Menghubungkan...' : 'Terhubung'}
+              {syncStatus === 'syncing' ? 'Sinkronisasi...' : 'Sistem Sinkron'}
             </span>
           </div>
-          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Cloud Sync: {lastSyncTime}</span>
+          <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">Last Sync: {lastSyncTime}</span>
         </button>
       </div>
 
@@ -369,19 +365,21 @@ const App: React.FC = () => {
             lokets={state.lokets} 
             queues={state.queues} 
             users={state.users} 
-            nextQueue={state.queues.filter(q => q.status === QueueStatus.WAITING && new Date(q.timestamp).toISOString().split('T')[0] === getLocalDate()).sort((a,b) => a.timestamp - b.timestamp)[0]}
+            nextQueue={currentTodayWaiting.sort((a,b) => a.timestamp - b.timestamp)[0]}
           />
 
-          <WaitingPanel count={state.queues.filter(q => q.status === QueueStatus.WAITING && new Date(q.timestamp).toISOString().split('T')[0] === getLocalDate()).length} />
+          <WaitingPanel count={currentTodayWaiting.length} />
           
           <div className="flex flex-col items-center space-y-6">
              <button onClick={() => setIsAdminOpen(true)} className="group flex items-center space-x-3 text-slate-500 hover:text-blue-600 transition-all bg-white px-8 py-3 rounded-full shadow-md border border-slate-100 hover:shadow-xl hover:-translate-y-1">
                 <div className="bg-slate-100 group-hover:bg-blue-100 p-2 rounded-full transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" /></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" /></svg>
                 </div>
-                <span className="text-xs font-black uppercase tracking-[0.2em]">Otoritas Petugas Jember</span>
+                <span className="text-xs font-black uppercase tracking-[0.2em]">Otoritas Petugas</span>
              </button>
-             <p className="text-[9px] text-slate-300 font-bold uppercase tracking-[0.4em]">Sistem Restart Otomatis Setiap Jam 00:00</p>
+             <p className="text-[9px] text-slate-300 font-bold uppercase tracking-[0.4em] text-center max-w-xs leading-relaxed italic">
+               Nomor mengikuti urutan terakhir di Spreadsheet. Reset harian otomatis.
+             </p>
           </div>
         </div>
       </div>
@@ -390,13 +388,14 @@ const App: React.FC = () => {
         <AdminPanel 
           lokets={state.lokets} queues={state.queues} users={state.users} serviceTypes={state.serviceTypes} 
           gasUrl={state.gasUrl} spreadsheetUrl={state.spreadsheetUrl} onClose={() => setIsAdminOpen(false)}
-          onReset={() => { if(confirm('⚠️ Reset Harian: Data hari ini akan diarsipkan.')) syncStateWithCloud(true); }}
+          onReset={() => { syncStateWithCloud(true); }}
           onCallNext={handleCallNext} onComplete={handleCompleteQueue} 
           onUpdateUsers={(u) => setState(prev => ({...prev, users: u}))}
           onUpdateServiceTypes={(t) => setState(prev => ({...prev, serviceTypes: t}))}
           onUpdateGasUrl={(url) => setState(prev => ({...prev, gasUrl: url.trim()}))}
           onUpdateSpreadsheetUrl={(url) => setState(prev => ({...prev, spreadsheetUrl: url.trim()}))}
           onUpdateLokets={(l) => setState(prev => ({...prev, lokets: l}))}
+          onTakeQueue={handleTakeQueue}
         />
       )}
       {lastGeneratedTicket && <TicketModal ticket={lastGeneratedTicket} onClose={() => setLastGeneratedTicket(null)} />}

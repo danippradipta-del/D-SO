@@ -38,15 +38,13 @@ const LoketSection: React.FC<LoketSectionProps> = ({ lokets, queues, users, next
             </div>
             <div className="text-center">
               <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">{loket.name}</p>
-              {isAssistant ? (
-                <div className="mt-2 px-3 py-1 bg-amber-50 rounded-lg border border-amber-100">
-                  <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Pendaftaran Mandiri</span>
-                  <p className="text-sm font-bold text-slate-800">ASISTEN AKTIF</p>
+              <p className="text-4xl font-black text-slate-800 mt-1">
+                {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '-'}
+              </p>
+              {isAssistant && (
+                <div className="mt-2 px-3 py-0.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Petugas Aktif</span>
                 </div>
-              ) : (
-                <p className="text-4xl font-black text-slate-800 mt-1">
-                  {currentQueue ? `${currentQueue.prefix}-${currentQueue.number.toString().padStart(3, '0')}` : '-'}
-                </p>
               )}
             </div>
             <div className={`h-1.5 w-12 rounded-full ${barColor} opacity-50`}></div>
@@ -61,7 +59,7 @@ const LoketSection: React.FC<LoketSectionProps> = ({ lokets, queues, users, next
           </svg>
         </div>
         <div className="text-center">
-          <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">ANTRIAN BERIKUTNYA</p>
+          <p className="text-sm font-bold text-slate-400 tracking-widest uppercase">ANTREAN BERIKUTNYA</p>
           <p className="text-4xl font-black text-slate-800 mt-1">
             {nextQueue ? `${nextQueue.prefix}-${nextQueue.number.toString().padStart(3, '0')}` : '-'}
           </p>

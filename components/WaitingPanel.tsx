@@ -15,8 +15,8 @@ const WaitingPanel: React.FC<WaitingPanelProps> = ({ count }) => {
           </svg>
         </div>
         <div className="text-center md:text-left">
-          <h3 className="text-slate-400 font-bold tracking-widest text-xs uppercase">Total Antrian Menunggu</h3>
-          <p className="text-slate-600 font-medium">Antrean aktif yang belum dilayani</p>
+          <h3 className="text-slate-400 font-bold tracking-widest text-xs uppercase">Total Antrean Menunggu</h3>
+          <p className="text-slate-600 font-medium">Antrean aktif yang berstatus "Menunggu"</p>
         </div>
       </div>
       <div className="text-6xl md:text-7xl font-black text-blue-600 tabular-nums">
